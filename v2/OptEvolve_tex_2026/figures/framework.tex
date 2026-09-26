@@ -1,0 +1,106 @@
+%% Figure 1: OptEvolve overview (TikZ picture only).
+%% Compile with framework-standalone.tex, or \input into the paper.
+%% Read left to right: problem -> typed choices -> admission -> measurement.
+%% The three small cards inside search are the *kinds* of genes, not all eight
+%% layers. Figure 2 expands them. Returns below the spine have distinct roles:
+%% red = measured kernel cost re-prices the search; dashed = reusable evidence.
+\begingroup%
+\definecolor{oeInput}{HTML}{E7E0F1}% lavender: supplied problem
+\definecolor{oeGenome}{HTML}{DCE6F7}% blue: typed search
+\definecolor{oeGate}{HTML}{F4DFA5}% amber: pre-execution admission
+\definecolor{oeOutput}{HTML}{E3EFD7}% green: evaluation and routing
+\definecolor{oePool}{HTML}{E5E9EA}% gray: retained search evidence
+\definecolor{oeInk}{HTML}{293846}% outlines and forward flow
+\definecolor{oePrice}{HTML}{B3242B}% device-cost return only
+\begin{tikzpicture}[
+  x=1cm,y=1cm,font=\sffamily,line cap=round,line join=round,
+  panel/.style={draw=oeInk,line width=.8pt,rounded corners=2.4mm,
+                align=center,inner sep=1.4mm},
+  mini/.style={draw=oeInk!66,line width=.65pt,rounded corners=1.2mm,
+               fill=white,align=center,inner sep=1.1mm,
+               font=\sffamily\fontsize{7.8}{9.2}\selectfont},
+  title/.style={font=\sffamily\fontsize{9.1}{10.8}\bfseries\selectfont,
+                align=center},
+  note/.style={font=\sffamily\fontsize{7.5}{8.9}\selectfont,
+               align=center},
+  flow/.style={-{Latex[length=2.3mm]},draw=oeInk,line width=.95pt},
+  evidence/.style={-{Latex[length=2.3mm]},draw=oeInk!72,
+                    line width=.85pt,dash pattern=on 2mm off 1.2mm},
+  price/.style={-{Latex[length=2.3mm]},draw=oePrice,line width=1pt}
+]
+%% Panel centres and sizes: all four share y=5.50 and height 4.25 cm.
+%% Edges are 0.05/2.85, 3.30/6.95, 7.40/10.95, 11.40/14.90:
+%% the three forward-arrow gaps are each 0.45 cm.
+\node[panel,fill=oeInput,minimum width=2.80cm,minimum height=4.25cm]
+  (input) at (1.45,5.50) {};
+\node[panel,fill=oeGenome,minimum width=3.65cm,minimum height=4.25cm]
+  (genome) at (5.125,5.50) {};
+\node[panel,fill=oeGate,minimum width=3.55cm,minimum height=4.25cm]
+  (gate) at (9.175,5.50) {};
+\node[panel,fill=oeOutput,minimum width=3.50cm,minimum height=4.25cm]
+  (evaluate) at (13.15,5.50) {};
+
+%% Input: a family of instances and a deployment target, not a single QP.
+\node[title] at (1.45,7.26) {Problem family};
+\node[mini,text width=2.32cm,minimum height=.82cm] at (1.45,6.32)
+  {Family $P(\theta)$};
+\node[mini,text width=2.32cm,minimum height=.82cm] at (1.45,5.28)
+  {structure + scale};
+\node[mini,text width=2.32cm,minimum height=.82cm] at (1.45,4.24)
+  {target device\\accuracy};
+
+%% Typed search: the three decisions that distinguish the proposal from
+%% a parameter sweep. The genome schema allows one layer to be patched.
+\node[title] at (5.125,7.26) {Typed solver genome};
+\node[mini,text width=3.20cm,minimum height=.92cm] at (5.125,6.35)
+  {{\bfseries Formulation}\\constraints $\to$ projections};
+\node[mini,text width=3.20cm,minimum height=.92cm] at (5.125,5.29)
+  {{\bfseries Algorithm}\\scheme + parameters};
+\node[mini,text width=3.20cm,minimum height=.92cm] at (5.125,4.23)
+  {{\bfseries Execution}\\fused CPU/GPU kernel};
+
+%% Admission has two different checks. The theorem certifies the formal
+%% scheme/relaxation grammar; tests against a contract check custom projections.
+\node[title] at (9.175,7.26) {Convergence first};
+\node[mini,text width=3.12cm,minimum height=1.33cm] at (9.175,6.10)
+  {{\bfseries Scheme + relaxation}\\
+   symbolic conditions\\$\to$ certificate};
+\node[mini,text width=3.12cm,minimum height=1.29cm] at (9.175,4.50)
+  {{\bfseries Operator contract}\\
+   test custom projections\\reject failures};
+
+%% Evaluation and output: one acceptance check for all candidates, then
+%% compare evolved solvers with recognized specialists on measured time.
+\node[title] at (13.15,7.26) {Measure and route};
+\node[mini,text width=3.07cm,minimum height=1.32cm] at (13.15,6.10)
+  {{\bfseries Time to acceptance}\\
+   $T=\mathrm{setup}+N\,t$};
+\node[mini,text width=3.07cm,minimum height=1.30cm] at (13.15,4.51)
+  {{\bfseries Routed solver}\\
+   evolved or specialist\\+ routing predicate};
+
+%% Forward spine: the gate precedes compilation and performance evaluation.
+\draw[flow] (input.east) -- (genome.west);
+\draw[flow] (genome.east) -- (gate.west);
+\draw[flow] (gate.east) -- (evaluate.west);
+
+%% Price feedback (red): measured device cost can change which *algorithm*
+%% is preferred. This is not just a kernel-tuning step after algorithm search.
+\draw[price] (13.15,3.375) -- (13.15,2.84) --
+  (5.28,2.84) -- (5.28,3.375);
+\node[font=\sffamily\fontsize{7.6}{9}\selectfont,text=oePrice,
+      fill=white,inner sep=1pt] at (9.22,2.84)
+  {device cost can change the winning algorithm};
+
+%% Evidence feedback (dashed): measured successes and failures persist in
+%% the gene pool and inform the next one-layer typed proposal. Keep the pool
+%% below the red cost annotation while avoiding a large empty band between them.
+\node[panel,fill=oePool,minimum width=8.22cm,minimum height=.91cm]
+  (pool) at (7.50,1.85) {};
+\node[title] at (7.50,2.03) {Gene pool};
+\node[note] at (7.50,1.64) {retain measured successes, failures and provenance};
+\draw[evidence] (14.02,3.375) -- (14.02,1.85) -- (pool.east);
+\draw[evidence] (pool.west) -- (3.29,1.85) --
+  (3.29,3.00) -- (4.10,3.00) -- (4.10,3.375);
+\end{tikzpicture}%
+\endgroup%

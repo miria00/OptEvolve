@@ -1,0 +1,522 @@
+\section{Discussion}
+
+\subsection{What the factorisation buys}
+
+The factorisation lets the two factors be searched separately. The evidence for
+the first factor is exact rather than statistical. Across every end-to-end
+fusion sweep, seven sizes from 128 to 1984 pixels on two devices, the
+traced-bound baseline, the static chunked loop and every fusion tile reach the
+same iteration count on the same instance and all certify: 72 of 72 instances,
+eight arms each, zero iteration mismatches, zero certification failures. All
+fourteen sweeps ran at $K=256$.
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz{128,256,384,496}.json
+% source: results/kernel_fusion_20260909/e2e_bw/full_bw_sz{128,256,384,496}.json
+% source: results/kernel_fusion_20260909/large/large_4090_m{2,3,4}.json
+% source: results/kernel_fusion_20260909/bw_day2/large_bw_m{2,3,4}.json
+% 6 instances in each full_* file, 4 in each large_* file, 8 arms each: 72 total.
+The iteration count was also identical on the two architectures measured, at
+every size run on both: $576.000$ and $682.667$ at $n{=}128$, $597.333$ and
+$682.667$ at $n{=}256$, and $1066.667$ and $1152.000$ at $n{=}496$, for $K=64$
+and $K=256$ at tolerance $10^{-4}$, on both sm\_89 and sm\_120. At $n{=}128$
+both devices give the same per-instance vectors,
+$[1216, 320, 448, 448, 384, 640]$ and $[1280, 512, 512, 512, 512, 768]$.
+% source: results/tv_size_20260909/sz{128,256,496}_4090/factorial.json
+% source: results/bw_20260909/sz{128,256,496}_bw/factorial.json
+Kernel search can therefore hold $N$ fixed and time a single arithmetic budget,
+within the two-device scope in which that equality was measured.
+
+The converse half holds under fixed precision, conditioned on cadence. At
+$K=256$, step sizes that change $N$ by $4.3125\times$ ($2944.000$ against
+$682.667$) change the cost per iteration by 3.8 percent, from $19.0766$ to
+$19.7976$ microseconds across the four \texttt{f64\_K256} arms, a factor of
+$1.0378$ (Table~\ref{tab:leak}). At $K=64$ the same two step-size presets give
+$4.839\times$ ($2890.667$ against $597.333$). Scheme identity is inert to within
+one cadence block at $K=64$ and $K=256$: the stopping test is evaluated only at
+multiples of $K$, so $N$ is the crossing iteration rounded up to the next
+multiple of $K$, and at $K=256$ the equality is resolved only to 256 iterations.
+Inside that resolution \texttt{condat\_vu\_banked} and \texttt{pdhg\_banked}
+share the per-instance vector $[1024, 512, 768, 512, 512, 768]$ at $n{=}256$ and
+agree on 11 of 12 certified netflow pairs; the twelfth, size 12 instance 1,
+agrees at the 20000-iteration cap with \texttt{conv} false and gap
+$2.858 \times 10^{-4}$ for both schemes, so it is an agreement about failure
+rather than about $N$. At $K=16$ and $n{=}256$ the two schemes do differ,
+$584.000$ against $578.667$.
+% source: results/method_axis_20260909/factorial.json, tolerances["0.0001"].rows
+% source: results/netflow_20260909/grid_4090.json
+% source: results/bw_20260909/sz256_bw/factorial.json;
+% source: results/tv_ffi_20260906/cadence_4090_v1/factorial.json
+
+Cadence carries the largest single share of the variance in log cost per
+iteration, 47.43 percent at $10^{-4}$ and 51.19 percent at $10^{-6}$.
+% source: results/artifacts_20260910/fanova.json,
+% decompositions.exec_x_prec_x_cadence__logT__tol0.0001.percent_variance.cadence
+%   = 47.43020732030952
+% decompositions.exec_x_prec_x_cadence__logT__tol1e-06.percent_variance.cadence
+%   = 51.19205833962386
+% 12 cells, execution x precision x cadence, response log per-iteration cost.
+The mechanism is chunk length, not check frequency. Measured directly over the
+24 certificate-on minus certificate-off differences in a loop-structure sweep,
+the certificate term ranges from $-239.90$ to $+844.56$ nanoseconds per
+iteration against a static per-iteration cost of $8.09$ to $11.94$ microseconds,
+and at $n{=}128$, $K=64$ it is $26.5$ nanoseconds. At $K \geq 64$ the check
+itself is inside noise; what cadence buys is the length of the chunk that can be
+unrolled between checks.
+% source: results/finish_20260910/loop_mechanism.json (48 cells, 24 cert differences)
+
+\subsection{Where the axes stop separating}
+
+The structure predicts its own failure modes and the measurements find both. An
+adaptive precision schedule couples the factors, because the switch iteration is
+chosen from the gap trajectory, so the fraction of the run spent in float32
+depends on the step sizes: the 3.8 percent spread under fixed precision becomes
+16.6 percent under the schedule (Table~\ref{tab:leak}). The two execution
+decisions also stop being independent past about 1000 pixels. The static loop's
+advantage over the traced bound falls from $1.673\times$ at 128 pixels through
+$1.347$, $1.291$, $1.093$ and $1.016$ to a minimum of $0.989\times$ at 1488 and
+$0.993\times$ at 1984, so at the two largest sizes the static bound is mildly
+harmful rather than merely exhausted. Fusion over the static loop instead turns
+U-shaped, at $1.571\times$, $1.060\times$ and $1.410\times$ across 128, 992 and
+1984 pixels. Each of those is a ratio of summed wall time over the instances of
+that sweep rather than a mean of per-instance ratios; the per-instance geometric
+mean at 128 pixels is $1.580\times$. The 128-pixel sweep uses six raw crops and
+the 992 to 1984 pixel sweeps use four montages each, of two to four distinct
+scans, since a raw scan caps an honest crop near 496 pixels. The $1.410\times$
+at 1984 pixels is a fusion gain over the static loop at float64 throughout,
+$2.2407709$ seconds static over $1.5890337$ seconds for the $24 \times 4$ tile,
+and is not a precision comparison. The execution structure and the tile must be
+chosen jointly at large size and can be chosen independently at small.
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz128.json (128 px)
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz{256,384,496}.json
+% source: results/kernel_fusion_20260909/large/large_4090_m{2,3,4}.json (992, 1488, 1984 px)
+% source: results/kernel_fusion_20260909/REPORT.md section 7
+
+\begin{table}[t]
+\centering
+\caption{The factorisation and its one measured leak. TV, $n{=}256$, tolerance
+$10^{-4}$, mean over six OCT images. Under fixed precision the cost per
+iteration spans 3.8 percent across arms whose iteration counts differ by
+$4.3125\times$. Under the adaptive schedule it spans 16.6 percent.}
+\label{tab:leak}
+\begin{tabular}{llrr}
+\toprule
+policy & algorithm & mean $N$ & cost per iteration ($\mu$s) \\
+\midrule
+\texttt{f64\_K256} & \texttt{condat\_vu\_banked}   & 682.667  & 19.798 \\
+\texttt{f64\_K256} & \texttt{pdhg\_banked}         & 682.667  & 19.683 \\
+\texttt{f64\_K256} & \texttt{condat\_vu\_balanced} & 2944.000 & 19.077 \\
+\texttt{f64\_K256} & \texttt{pdhg\_balanced}       & 2944.000 & 19.227 \\
+\midrule
+\texttt{schedule\_K256} & \texttt{condat\_vu\_banked}   & 682.667  & 11.052 \\
+\texttt{schedule\_K256} & \texttt{pdhg\_banked}         & 682.667  & 11.232 \\
+\texttt{schedule\_K256} & \texttt{condat\_vu\_balanced} & 2944.000 & 12.578 \\
+\texttt{schedule\_K256} & \texttt{pdhg\_balanced}       & 2944.000 & 12.888 \\
+\bottomrule
+\end{tabular}
+% source: results/method_axis_20260909/factorial.json, tolerances["0.0001"].rows.
+% Cost per iteration is solver_s / iters per instance, averaged over the 6 training images.
+% Recomputed to full precision: 19.797606 / 19.682557 / 19.076624 / 19.227495 /
+% 11.051901 / 11.231891 / 12.577807 / 12.888450 microseconds.
+% Spread 19.076624 to 19.797606 is a factor 1.0378; 11.051901 to 12.888450 is 1.1662.
+\end{table}
+
+\subsection{Predicting the step ratio from problem structure}
+
+Rescaling the objective vector as $c \to \alpha c$ is identically the step
+rescaling $(\tau, \sigma) \to (\alpha \tau, \sigma / \alpha)$, so the
+construction gate is invariant under it while the step ratio $r = \tau / \sigma$
+and the conditioning proxy $\omega_0 = \lVert c \rVert / \lVert b \rVert$ both
+move. Sweeping $\alpha$ over decades therefore separates the ratio from the
+gate. Fitting a rule of the form $r = C / \omega_0^{p}$ on the netflow wide
+sweep alone, by minimising geometric-mean regret over its 13-point ratio grid,
+with $p$ searched on a $0.05$ grid and $C$ on a $0.01$ dex grid, gives
+$p = 2.00$ and $C = 0.977$. That is the only rule this paper reports, and it is
+the pair used in the abstract, the introduction and Section~5. Evaluated
+unchanged on three held-out families, it beats the best single fixed ratio on
+every one of them (Table~\ref{tab:omega}), and the cleanest statement is
+coverage rather than regret: the rule certifies every instance of all four sets,
+while the best fixed ratio for each set certifies 100 of 108, 54 of 54, 48 of 54
+and 44 of 54.
+
+The comparison is protocol dependent and both protocols are reported, in the
+same words as Section~5. Under the protocol of Table~\ref{tab:omega}, which is
+the one every table in this paper uses, a run that fails to certify inside the
+60000-iteration cap is charged at the cap, so both policies are scored on the
+identical instance set. Under the alternative protocol in which each policy is
+scored only on the instances it certifies, with the fixed ratio restricted to
+those certifying at least 80 percent of the set, the fixed baselines improve to
+$2.151\times$ on 87 of 108 netflow wide instances, $1.428\times$ on 54 of 54
+optimal transport, $2.185\times$ on 44 of 54 multi-commodity flow and
+$1.947\times$ on 45 of 54 held-out topologies, a pooled $1.825\times$ on 143 of
+the 162 held-out instances. They are then measuring a different and smaller
+problem on every row. Dropping the coverage floor as well lets one shared ratio
+certify barely two thirds of the pooled set, $r = 30$ at $1.752\times$ on 108 of
+162. The exponent 2 is the value implied by the primal-weight heuristic in PDLP;
+the evidence here is consistent with it without pinning it down, and
+Section~\ref{sec:limits} gives the identification caveat in full.
+% source: results/finish_20260910/omega_wide_bw.json (fit), omega_ot_wide.json,
+% source: results/finish_20260910/omega_mcf.json, omega_holdout.json
+% p and C fitted jointly by grid search on omega_wide_bw only, p on a 0.05 grid
+% and C on a 0.01 dex grid: p = 2.00, C = 0.9772, geometric mean regret 1.18583.
+% The alternative-protocol figures above recompute as 2.1513 on 87 of 108,
+% 1.4279 on 54 of 54, 2.1854 on 44 of 54, 1.9475 on 45 of 54, pooled 1.8249 on
+% 143 of 162, and with the coverage floor dropped 1.7516 at r = 30 on 108 of 162.
+% They are identical to the figures printed in Section 5, by construction.
+
+\begin{table}[t]
+\centering
+\caption{The $\omega_0$ rule transfers off the family it was fitted on. The rule
+is $r = C / \omega_0^{2}$ with $C = 0.977$, fitted on netflow wide alone and
+then evaluated unchanged. This is the protocol used in every table of this paper
+that reports regret. Regret is against the per-instance oracle over that
+instance's own ratio grid, with a run that fails to certify inside the
+60000-iteration cap charged at the cap, so both policies are scored on every
+instance of every row. The fixed column is the single grid ratio minimising
+geometric-mean regret on that set, chosen separately per set, and both certified
+columns count the instances that same policy solved inside the cap. The pooled
+row is the geometric mean over the 162 held-out instances, each family carrying
+its own best fixed ratio.}
+\label{tab:omega}
+\begin{tabular}{lrlrrrrr}
+\toprule
+& & & \multicolumn{2}{c}{geomean regret} & & \multicolumn{2}{c}{certified} \\
+\cmidrule(lr){4-5} \cmidrule(lr){7-8}
+evaluation set & $n$ & $\omega_0$ range & fixed & rule & rule worst & rule & fixed \\
+\midrule
+netflow wide (fitted on) & 108 & 0.0697 to 825 & 2.779 & 1.186 & 2.125 & 108 & 100 \\
+optimal transport        &  54 & 0.0054 to 79.3 & 1.428 & 1.179 & 1.562 &  54 &  54 \\
+multi-commodity flow     &  54 & 0.0227 to 312 & 2.840 & 1.032 & 1.262 &  54 &  48 \\
+held-out topologies      &  54 & 0.0735 to 806 & 2.514 & 1.190 & 1.825 &  54 &  44 \\
+\midrule
+pooled held out          & 162 & 0.0054 to 806 & 2.168 & 1.131 & 1.825 & 162 & 146 \\
+\bottomrule
+\end{tabular}
+% source: results/finish_20260910/omega_wide_bw.json (108 instances, 13 ratios, 1404 rows)
+% source: results/finish_20260910/omega_ot_wide.json (54, 13 ratios, 702 rows)
+% source: results/finish_20260910/omega_mcf.json (54, 12 ratios, 648 rows)
+% source: results/finish_20260910/omega_holdout.json (54, 13 ratios, 702 rows)
+% Recomputed to 4 decimals: rule 1.1858 / 1.1786 / 1.0318 / 1.1899 / 1.1311;
+% worst 2.1250 / 1.5625 / 1.2623 / 1.8252 / 1.8252;
+% best fixed 2.7790 (r=0.03) / 1.4279 (r=100) / 2.8395 (r=0.1) / 2.5136 (r=0.003),
+%   pooled 2.1681 as the geometric mean of the three held-out rows over their
+%   162 instances; certified by those same ratios 100 / 54 / 48 / 44 / 146.
+% The pooled row of earlier drafts used one shared ratio on the 11-point common
+%   grid, 2.7843 at r = 3, and the rule value 1.1105 that goes with restricting
+%   the oracle to that grid. Both are dropped: the table now keeps each
+%   instance's own grid throughout, which gives 2.1681 and 1.1311.
+% One shared ratio, drawn from the 11 ratios the three held-out grids have in
+%   common but scored against each instance's own oracle, gives 2.8204 at r = 3.
+% omega_0 ranges to 4 decimals: 0.0697 to 825.2357; 0.0054 to 79.2830;
+%   0.0227 to 311.5050; 0.0735 to 806.2762; 0.0054 to 806.2762.
+\end{table}
+
+\subsection{Limitations}
+\label{sec:limits}
+
+Two GPU architectures are in scope for every timing claim, an RTX 4090
+(sm\_89) and an RTX PRO 6000 Blackwell Max-Q (sm\_120), so no
+accelerator-portability claim is available. An RTX 5090 was measured earlier and
+is excluded from scope; its rows survive in the archive and are not used here.
+The two in-scope devices disagree about whether to fuse at all. At $n{=}496$ the
+best Blackwell tile runs at $0.925\times$ the plain static loop and at 992 pixels
+at $0.989\times$, so on that device the correct decision at two sizes is not to
+fuse. The devices agree on the tile at 128 pixels ($8 \times 4$) and 256 pixels
+($24 \times 4$), disagree at 384 ($24 \times 4$ against $32 \times 4$), 496
+($32 \times 4$ against $16 \times 2$), 992 ($32 \times 2$ against $24 \times 4$)
+and 1488 ($24 \times 4$ against $32 \times 2$), and agree again at 1984
+($24 \times 4$).
+% source: results/kernel_fusion_20260909/e2e_bw/full_bw_sz{128,256,384,496}.json
+% source: results/kernel_fusion_20260909/bw_day2/large_bw_m{2,3,4}.json
+% source: results/hardware_codex/REPORT.md (oct_5090_v1, lp_5090_v2);
+% source: results/tv_ffi_20260906/catalog_5090; results/kernel_fusion_20260909/REPORT.md line 4
+
+The frozen final holdout has never been evaluated and the pre-registration is
+untouched. The field \texttt{final\_holdout\_loaded} is false in all 23
+\texttt{data.json} records under \texttt{results/} that carry it; the nine older
+\texttt{hardware\_codex} records predate that field and carry only a
+three-patch per-run diagnostic split, whose report states that the
+pre-registration and final holdout remain untouched. Every measurement here is
+exploratory, and the LP diagnostics use only air05, trento1 and neos8 from the
+frozen calibration partition under a 20000-iteration cap.
+% source: results/*/data.json (32 files: 23 with the field, all false; 9 without it)
+% source: results/hardware_codex/REPORT.md lines 5 and 7
+
+Temporal fusion is untested on the sparse families rather than proved
+inapplicable to them. The kernel is a dense two-dimensional stencil with tile
+edge $S = B + 2T$ and a halo of width $T$ whose valid region shrinks one cell
+per side per iteration. Transfer to a sparse incidence operator was not
+attempted and no fusion measurement on netflow, OT or MCF exists, so this is a
+scope limit and not an impossibility result.
+% source: results/kernel_fusion_20260909/tv_temporal.cu lines 2-3, 18 and 26
+
+The $\omega_0$ exponent is censored by the ratio grid, and the estimate has
+moved as that censoring has fallen. Two conventions are fixed for every count in
+this paragraph and named again in the caption of the exponent table in
+Section~5: an instance counts as censored when any ratio attaining its minimum
+certified $N$ sits at an endpoint of that instance's grid, and tied argmin
+ratios are averaged geometrically before the log-log fit. The narrow grid has
+nine points from 0.01 to 100 and places the oracle at the floor for 91 of 209
+instances and at the ceiling for 11; its log-log fit of the oracle ratio on
+$\omega_0$ gives slope $-0.94$, or $-1.14$ over the 118 instances left after the
+floor-censored ones are dropped. Four wider or finer grids now exist, and the
+slope magnitude rises across them: $-0.94$ with 102 of 209 on an edge (9
+points), $-1.54$ with 33 of 108 (13 points), $-1.58$ with 46 of 144 (12 points,
+8 seeds), $-1.68$ with 15 of 80 (19 points) and $-1.74$ with 14 of 88 (11 points
+over ten decades). It does not rise monotonically in the censored fraction: the
+eight-seed grid censors a larger fraction than the 13-point grid and still
+returns the larger slope. The regret-minimising exponent moves in the other
+direction and far less: $2.10$ on the nine-point pooled grid, $2.00$ on the
+13-point wide grid, $1.90$ on the 12-point eight-seed grid, $2.00$ on the
+19-point fine grid and $2.00$ on the 11-point ultrawide grid. It is not
+identified. At the best constant for each exponent, every exponent from $1.85$
+to $2.15$ is within 1 percent of the optimum on the wide grid, $1.65$ to $2.45$
+on the eight-seed grid, $1.75$ to $2.05$ on the fine grid and $1.80$ to $2.25$
+on the ultrawide grid; on the narrow pooled grid that set is not an interval at
+all, running from $1.40$ to $2.90$ with an isolated point at $1.15$. The two
+estimators bracket the exponent between about $1.7$ and $2.1$ and approach each
+other from opposite directions as censoring falls, but they have not met. Both
+remain consistent with the value 2 implied by PDLP's primal weight, and the
+bracket lies at its lower end below it. The 19-point grid has run and is
+included above; it does not narrow the bracket. No claim here should be read as
+pinning the exponent tighter than that bracket, and none of the five grids
+returns $1.8$ as the argmin of either estimator.
+% source: results/finish_20260910/omega_{4090,bw}.json (9 points, 0.01 to 100, 1944 rows,
+%   216 instances, 209 with a converged run)
+% source: results/finish_20260910/omega_wide_bw.json (13 points, 1e-4 to 100, 1404 rows)
+% source: results/finish_20260910/omega_holdout.json (13 points, 702 rows)
+% source: results/finish_20260910/omega_ot_wide.json (13 points, 702 rows)
+% source: results/finish_20260910/omega_mcf.json (12 points, 1e-4 to 1000, 648 rows)
+% source: results/finish_20260910/omega_ultrawide_bw.json (11 points, 1e-6 to 1e4, 968 rows)
+% source: results/finish_20260910/omega_fine_4090.json (19 points, 1e-5 to 300, 1520 rows)
+% Slopes recomputed with tied argmin ratios averaged geometrically, the
+% convention used in every section: -0.9365 / -1.5412 / -1.5781 / -1.6834 /
+% -1.7380. Ties broken to the smallest ratio instead gives -0.9309 / -1.5307 /
+% -1.5716 / -1.6762 / -1.7324, and to the largest -0.9421 / -1.5516 / -1.5845 /
+% -1.6905 / -1.7437; the choice moves each slope by at most 0.011.
+% Excluding the floor-censored instances on the narrow grid, -1.1368 over 118.
+% Censoring counts under the convention above: 102 of 209 (91 floor, 11
+% ceiling), 33 of 108, 46 of 144, 15 of 80, 14 of 88.
+% Regret exponents at C on a 0.01 dex grid and p on a 0.05 grid: 2.10, 2.00,
+% 1.90, 2.00, 2.00, at regret 1.1805, 1.1858, 1.1571, 1.1685, 1.0618.
+
+A clairvoyant policy that knows the cell and the scaling still carries
+$1.112\times$ geometric-mean and $1.814\times$ worst-case regret against the
+per-seed oracle over 142 of 144 instances. That measurement covers 2 cells and
+8 seeds, while the transfer results of Table~\ref{tab:omega} cover 10 cells,
+and 54 of the seed sweep's 144 instances also appear in the netflow wide row of
+that table, so the two are not computed on disjoint instance sets. It is an
+indication of the seed noise present in this kind of measurement and not a
+floor for any regret figure in that table.
+% source: results/finish_20260910/omega_seeds_4090.json (2 cells, 8 seeds,
+% 9 alphas, 144 instances, 142 with a converged run; recomputed regret 1.1123
+% geometric mean and 1.8140 worst). The 10 cells are the distinct cells of
+% omega_wide_bw.json (4), omega_ot_wide.json (2), omega_mcf.json (2) and
+% omega_holdout.json (2). Overlap on (cell, seed, alpha) with the seed sweep is
+% 54 instances, all inside netflow wide. No results JSON carries a device
+% field, so no device count is claimed here.
+
+No LLM advantage is claimed: the arms shared a fallback RNG stream and were
+positively correlated rather than independent, with 336 of 336 fallback-sourced
+LLM-arm candidates byte-identical to candidates of the matched random run.
+% source: results/sprint/phase2/analysis/gate1_numbers.json, budgets.arm_coupling.per_seed
+% (74 + 99 + 48 + 68 + 47 = 336, all byte_identical_in_matched_random_run)
+No joint-search advantage is claimed. On LP, backend-only, sequential,
+reverse-sequential and joint selection all choose \texttt{frozen\_B0} /
+\texttt{f64\_K50} at $0.392627$\,s over two instances. On TV, joint,
+implementation-only and implementation-then-algorithm all choose
+\texttt{condat\_vu\_banked} / \texttt{schedule\_K256} at $0.0076265$\,s
+penalised SGM-1, while algorithm-then-implementation chooses
+\texttt{pdhg\_banked} / \texttt{schedule\_K256} at $0.0077793$\,s, a
+$1.020\times$ gap. Sequential selection therefore ties joint in one order and
+not the other, over an exhaustively enumerated 12-cell catalog whose own
+protocol record declares it development only and not search efficiency.
+% source: results/hardware_codex/REPORT.md, joint_lp_4090_v2 table
+% source: results/method_axis_20260909/factorial.json selections and rows
+% source: results/method_axis_20260909/protocol.json status field
+
+Five narrower boundaries belong on the record. Scheme identity is inert at
+$K=64$ and $K=256$ at $10^{-4}$ but not everywhere: at $K=16$ and $n{=}256$, on
+both devices, \texttt{condat\_vu\_banked} averages $584.000$ iterations against
+$578.667$ for \texttt{pdhg\_banked}, with per-instance vectors
+$[1008, 512, 608, 416, 320, 640]$ against $[1008, 496, 608, 400, 320, 640]$. At
+$n{=}128$ and $n{=}496$ on the Blackwell the two schemes agree at $K=16$, at
+$552.000$ and $1040.000$, so the split is size-specific as well as
+cadence-specific.
+% source: results/bw_20260909/sz{128,256,496}_bw/factorial.json
+% source: results/tv_ffi_20260906/cadence_4090_v1/factorial.json
+Rejected recipes were never run, so the gate is verified as sufficient and not
+as necessary. The dense gate grid records the decision alone: 1573 gate
+evaluations, 121 distinct $(\tau, \sigma)$ pairs across 13 cells for scheme
+\texttt{pdhg} only, admitting 1220 and rejecting 353, with $N$,
+\texttt{exec\_s} and \texttt{converged} null in every row because no solve was
+attached to it. Sufficiency also carries a budget scope: across the two solving
+sweeps on that device, 1755 of 2106 runs were admitted and 257 of those hit the
+150000-iteration cap, so admission does not imply convergence within budget.
+% source: results/structure_20260909/rawgrid_4090gate.json
+%   (1573 runs, args.no_solve true, gate_admit only)
+% source: results/structure_20260909/structure_summary_4090.json totals block,
+%   which sums grid_4090.json (648 runs, 540 admitted, 18 capped) and
+%   regular_4090.json (1458, 1215, 239)
+Sample sizes are small: six OCT images per size in the end-to-end sweeps, four
+montages in each of the larger sizes, three timing repeats per instance, and
+three seeds per cell in the four sweeps of Table~\ref{tab:omega} and the two
+that make up the narrow grid, rising to four seeds in the ultrawide and fine
+grids and eight in the two seed-noise grids. All fourteen end-to-end fusion
+sweeps ran at $K=256$, so the iteration agreement they establish is resolved
+only to the nearest 256 against measured $N$ between 256 and 2048.
+% source: args blocks of results/kernel_fusion_20260909/{e2e,e2e_bw,large,bw_day2}/*.json
+%   (args.n = 6 in the eight full_* files, args.n = 4 in the six montage files,
+%    args.repeats = 3 throughout, args.K = 256 throughout; iters over all 72
+%    instances x 8 arms take the values 256, 512, 768, 1024, 1280, 1536, 2048)
+% source: args blocks of results/finish_20260910/omega_*.json: args.seeds = 3 in
+%   omega_{4090,bw,wide_bw,ot_wide,mcf,holdout}.json, 4 in
+%   omega_{ultrawide_bw,fine_4090}.json, 8 in omega_{seeds8,seeds_4090}.json
+Neither device was exclusive during timing. On the 4090 a resident server held
+15427\,MiB of 24564\,MiB at 0 percent utilization; the Blackwell box is shared
+and these runs used a GPU that was idle but not reserved. No occupancy snapshot
+was recorded for the Blackwell, so that second claim rests on the run report
+rather than on a machine-readable field. The 4090 reference cell is stable to
+0.66 percent across 12 independent processes, spanning $20.297$ to $20.432$
+microseconds per iteration, a factor of $1.00665$.
+% source: results/method_axis_20260909/protocol.json gpu_snapshot
+%   ("NVIDIA GeForce RTX 4090, 15427 MiB, 24564 MiB, 0 %"); no protocol.json
+%   under results/ carries a Blackwell gpu_snapshot
+% source: results/kernel_fusion_20260909/REPORT.md lines 82-84
+% source: results/tv_ffi_20260906/DECOMPOSITION_REPORT.md lines 5-8
+Finally, cadence is not our discovery as an engineering choice. OR-Tools ships
+\texttt{termination\_check\_frequency} with a default of 64 and an explicit
+annotation that the check involves extra work; what is new here is its status as
+the one gene the two factors share, not the fact that it is tuned.
+% source: survey record at 2-related-work.tex lines 89-90, citing
+% ORToolsPDLP2026. This is an external fact about OR-Tools and is not measured
+% under results/; DECOMPOSITION_REPORT.md names neither OR-Tools nor
+% termination_check_frequency and is not a source for it.
+
+\subsection{What would falsify the thesis}
+
+Table~\ref{tab:falsify} lists the five tests we consider decisive. The two
+negatives are the sharpest, because a better instrument would overturn them
+tomorrow. Roofline is anti-correlated at $n{=}128$ ($-0.943$) and positively
+correlated at $n \geq 992$ ($+0.829$), with per-size Spearman coefficients of
+$-0.943$, $-0.143$, $+0.143$, $+0.943$ and then $+0.829$ at each of the three
+largest sizes, for a mean of $0.355$. Sharpness pools to a log-log
+$r = +0.943$ over 17 converged instances, though the same pooled correlation
+unlogged is only $+0.724$, and the sign is not stable within families:
+$-0.539$ within netflow ($n=13$), $-0.842$ within the regular topology
+($n=6$), $-0.120$ within grid ($n=7$) and $+0.983$ within TV ($n=4$). One of
+the four subgroups therefore does not invert. The four are not disjoint: the
+netflow subgroup is exactly the union of the grid and regular topology
+subgroups, and the subgroups of size 4 and 6 carry no inference on their own.
+% source: results/diagnostics_20260909/roofline_4090.json, pred_s_per_pixel_iter per
+%   tile, rank-correlated against summed arm times in the seven 4090 timing files
+%   (e2e/full_4090_sz{128,256,384,496}.json, large/large_4090_m{2,3,4}.json).
+%   No Spearman value is stored in any JSON; it is recomputed from those files
+%   by scripts/diagnostics/score_roofline.py, whose output is archived at
+%   results/artifacts_20260910/roofline_scores_4090.log and tabulated in
+%   results/diagnostics_20260909/REPORT.md lines 26-29, the source for 0.567.
+% source: results/diagnostics_20260909/sharpness_4090.json, 17 of 18 rows
+%   converged (grid12d4 instance 1 hit the 20000 cap). Families: grid12d4,
+%   grid16d4, grid24d4, grid32d4 give the 7 grid rows; regular256d3,
+%   regular256d4, regular512d4 give the 6 regular rows; netflow is those 13
+%   together; tv128 and tv256 give the 4 TV rows. Recomputed log-log Pearson r
+%   on (tau, N): pooled +0.943, unlogged +0.724, netflow -0.539,
+%   regular -0.842, grid -0.120, TV +0.983.
+
+\begin{table}[t]
+\centering
+\caption{Falsifiers, with the measurement each would overturn.}
+\label{tab:falsify}
+\begin{tabular}{p{0.46\linewidth}p{0.46\linewidth}}
+\toprule
+observation that falsifies & current measurement \\
+\midrule
+A fusion tile or execution structure that changes the iteration count on any
+instance
+& 72 of 72 instances agree exactly at $K=256$, zero mismatches; a nine-repeat
+rerun reproduces the same means, 640 at $n{=}256$ and 1024 at $n{=}496$, while
+the timing ratios move 4 to 5 percent \\
+\addlinespace
+An adaptive-schedule leak that grows with problem size or family
+& 16.6 percent against 3.8 percent under fixed precision, at one cadence, one
+size, one family and one tolerance; the second size and second family were not
+measured, so this falsifier is not yet evaluable \\
+\addlinespace
+A cheap a-priori predictor that picks the fusion tile
+& the a-priori roofline model reaches 0.355 mean Spearman and 1 correct pick of
+7; adding a per-launch cost fitted on the same sweep raises it to 0.567 and
+still picks 1 of 7 \\
+\addlinespace
+A family on which the $r = C/\omega_0^{2}$ rule loses to a fixed ratio
+& on three held-out families it does not: $1.131\times$ against $2.168\times$
+pooled geomean regret over 162 instances, certifying 162 of 162 against 146 \\
+\addlinespace
+A device or family on which cadence is not the dominant variance share
+& 47.43 and 51.19 percent of variance in cost per iteration, from a 12-cell
+fANOVA on one device, one family and one size, with one observation per cell and
+no residual term, and with cadence carrying more levels than either competitor \\
+\bottomrule
+\end{tabular}
+% source: results/kernel_fusion_20260909/{e2e,e2e_bw,large,bw_day2}/*.json;
+% source: results/finish_20260910/fusion_r9_sz{256,496}.log (best arm 1.940x against
+%   the three-repeat 1.867x at n=256, 1.428x against 1.356x at n=496)
+% source: results/method_axis_20260909/factorial.json
+% source: results/diagnostics_20260909/roofline_4090.json and the seven 4090 timing files
+% source: results/finish_20260910/omega_{wide_bw,ot_wide,mcf,holdout}.json
+% source: results/artifacts_20260910/fanova.json
+\end{table}
+
+\section{Conclusion}
+
+Time to a certified solution factorises into an iteration count set by the
+method, the certificate cadence and the tolerance, and a cost per iteration set
+by the hardware, the execution structure, the kernel and the size. At fixed size
+and fixed cadence the first factor is invariant to the hardware, the execution
+structure and the kernel, exactly, in 72 of 72 measured instances across two
+architectures and seven sizes. It is not invariant to size: at $K=64$ in
+float64 with \texttt{condat\_vu\_banked}, $N$ is $576.000$ at $n{=}128$,
+$597.333$ at $n{=}256$, $736.000$ at $n{=}384$ and $1066.667$ at $n{=}496$.
+
+Cadence is the gene the two factors share within the recipe, and it carries the
+largest single variance share in cost per iteration. It is not the only gene in
+both. Size appears in both factors as well, and precision changes $N$ at some
+sizes: on the Blackwell at $K=64$, \texttt{f32\_cert64} gives $586.667$ against
+float64's $576.000$ at $n{=}128$ and $1077.333$ against $1066.667$ at $n{=}496$,
+while at $n{=}256$ the two agree at $597.333$.
+% source: results/tv_size_20260909/sz{128,256,384,496}_4090/factorial.json
+% source: results/bw_20260909/sz{128,256,496}_bw/factorial.json
+
+Three consequences follow. Kernel search runs against a fixed arithmetic budget:
+on the two architectures measured, the iteration count was identical at every
+size run on both, so $N$ can be held fixed within that scope while the second
+factor is timed. Legality is decided symbolically before any solve, by a gate
+that is an exact function of $\theta$ and family dependent in its threshold,
+verified as sufficient for admission and never as necessary; it admits on TV
+what it rejects on netflow, where the PDHG gate product
+$\tau \sigma \lVert L \rVert^2$ runs $1.02267$, $1.03040$, $1.03577$ and
+$1.03781$ at sizes 12, 16, 24 and 32. Every rejected row is a balanced
+configuration, 24 of 24, and no banked configuration is ever rejected. And the
+recipe is predictable from measured structure where a fixed choice is not:
+scaling the step ratio as $C / \omega_0^{2}$ with $C = 0.977$ fitted on netflow
+alone cuts pooled geomean regret on 162 held-out instances from $2.168\times$ to
+$1.131\times$ and lifts coverage from 146 to 162 of 162, at an exponent
+consistent with, though not pinned to, the value 2 implied by PDLP's primal
+weight.
+% source: results/structure_20260909/structure_summary_4090.json
+%   (gate_is_function_of_theta_only: 351 of 351 admitted at theta 0.1, 0.3, 0.6,
+%    0.9 and 0.99, and 0 of 351 at 1.02)
+% source: results/netflow_20260909/grid_4090.json (48 rows, 24 rejected, all balanced;
+%   for the Condat-Vu rows the recorded value is the LHS of
+%   t*L_f/2 + t*s*||L||^2 < 1, not the product)
+% source: results/finish_20260910/omega_{wide_bw,ot_wide,mcf,holdout}.json
+%   (fit on omega_wide_bw only, C = 0.977, exponent 2)
+
+The numerical admission run for the temporal fusion kernel is archived with the
+other artifacts: 106 lines holding 102 checked cases, 17 tile and fused-depth
+variants at three image shapes including a non-square 100 by 130, in both
+proximal settings. The worst absolute deviation against sequential single-step
+reference launches is $4.649 \times 10^{-15}$ and the verdict is PASS within
+float64 tolerance. No case is bitwise identical, so the admission is numerical
+and not a floating-point equivalence proof.
+% source: results/artifacts_20260910/kernel_admission_4090.log
+%   (102 rows beginning tv_tf; variants tv_tf{8x4,8x6,8x8}t64, tv_tf{16x2,16x3,
+%    16x4,16x6,16x8}t128, tv_tf16x4t256, tv_tf{24x3,24x4,24x6,32x2,32x3,32x4,
+%    32x6,40x2}t256; sizes 64x64, 128x128, 100x130; bitwise = no on all 102)

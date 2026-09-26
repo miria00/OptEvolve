@@ -1,0 +1,542 @@
+\section{LLM LOOP}
+\label{app:llm-loop}
+
+This appendix records a separate, executable whole-solver recovery experiment.
+The question is whether a model given a problem class, ordinary algorithm
+references, and a set of legal moves can assemble one of the complete methods
+used in this paper. The target here is the hyperspectral unmixing (HSI) solver,
+not a new speed record. All candidate programs, model requests, failure records,
+source hashes, manifests, and independent certificate outcomes are retained
+under \path{results/executable_discovery_20260926/}. Unless stated otherwise,
+the target is a relative Frank--Wolfe gap of $10^{-4}$ \emph{for every column}
+and simplex feasibility error at most $10^{-9}$.
+Execution feedback inside an LLM evolutionary loop is prior
+art~\citep{ye2024reevo}; the controlled question here is whether the withheld
+expert hints and the executable move space permit verified method recovery at
+a fixed fresh-evaluation budget.
+
+\subsection{Problem, moves, and judgment}
+For a shared $D\in\mathbb R^{n\times p}$ and columns $y_j$, the model must
+return the complete matrix $X$ for
+\begin{equation}
+  \min_{x_j\geq0,\,{\bf1}^\top x_j=1}
+       \tfrac12\lVert D x_j-y_j\rVert_2^2,\qquad j=1,\ldots,m.
+\end{equation}
+The real spectral dictionary has shape $188\times498$. The fixed judge uses
+host float64 arithmetic on the original, unmodified $D,Y$: it checks shape,
+finiteness, simplex feasibility, and
+$[\langle\nabla f_j(x_j),x_j\rangle-\min_i(\nabla f_j(x_j))_i]/
+ [1+|f_j(x_j)|]\leq10^{-4}$ for every $j$.
+A failed or over-budget case receives the full time cap in the search score.
+This independent output certificate cannot be weakened by a generated stopping
+rule. A candidate first encounters three numerical admission cases (identity,
+rank-deficient, and zero design). Admission, setup, JIT compilation, transfers,
+iteration, output reconstruction, and repeated host certificates are all counted
+in its algorithm clock; JAX runtime initialization is separately recorded as
+process overhead. Every timed evaluation uses a fresh worker process with its
+persistent compilation cache disabled.
+
+The interface has eight executable layers: (1) quadratic formulation or
+forward gradient; (2) FBS, DRS, or direct equality-split ADMM update;
+(3) carried state and inverse, Cholesky, recomputed, or host-computed factor;
+(4) optional retirement of independently accepted columns with full-batch
+reconstruction; (5) optional finite FBS-to-DRS handoff; (6) internal float32 or
+float64; (7) CPU or GPU execution; and (8) compiled chunk length and unrolling.
+A separate certificate-schedule choice requests a host check every chunk or
+uses a cheap device screen between host checks. Step size, resolvent parameter,
+and relaxation are also selectable. The compiler supplies the named standard
+operators; the proposer chooses a composition and parameters from this finite
+space. Thus recovery is \emph{automatic assembly from supplied moves}, not the
+invention of ADMM or of a new simplex projection. These experiments check the
+base FBS/DRS constructions and the numerical outputs, but the full direct ADMM,
+retirement, and certificate-scheduling adapter does not carry a new
+whole-program convergence proof. This experiment must not be conflated with the
+paper's formal admissibility claims for its original certified genome calculus.
+
+\subsection{Data, hardware, and model access}
+The final recovery search uses disjoint training pixels from the same Cuprite
+image: $m=4{,}096$ and $16{,}384$ with the shared $188\times498$ dictionary,
+plus a synthetic $96\times160$ design with $32$ right-hand sides. The search
+budget is $120$\,s per case. A sealed test uses \emph{different Cuprite pixels}
+in batches of $6{,}144$ and $10{,}000$, plus a synthetic $192\times320$
+design with $128$ right-hand sides and stronger conditioning; each is run three
+times at the same $120$\,s cap. Pixel indices and input hashes were frozen in
+the manifests before this search. Real-pixel holdouts share a spectral library;
+this is within-library transfer, alongside a synthetic dimension and
+conditioning shift, not an unseen real dataset.
+
+There are six A100 80\,GB devices, four on node~0 and two on node~1. The
+separately hosted H100 80\,GB serves the frozen Qwen 27B proposer and does not
+also run timed candidates. The local RTX~4090 carries an existing smaller-model
+service, not this assay. Each candidate chain owns an A100 slot; per-GPU file
+locks prevent timed jobs from overlapping. The model sees only the problem,
+training case dimensions, its own earlier configurations and measured outcomes,
+the action grammar, and standard textbook equations and executable NumPy
+examples of projected gradient, ADMM, DRS, quadratic proximal steps, and simplex
+projection. It never receives the manually authored completed HSI solver or
+sealed inputs. The \texttt{full\_cards} arm additionally sees four short expert
+hints: split the quadratic from the simplex constraint, reuse a factor across
+right-hand sides, retire accepted columns while retaining all outputs, and
+price compiled grouping and certificate cadence. The \texttt{withheld\_cards}
+arm sees the same standard references and action support without these hints.
+The \texttt{resample} arm does not receive execution history; the random arm
+samples the same canonical parameter space. All four arms completed two
+prescribed seeds and eight fresh executable candidates per seed. Duplicates and malformed
+responses are logged separately, with a hard proposal-call cap. No model
+weights are updated in this simple loop.
+
+\subsection{How the result was reached}
+The original free-source experiment demonstrated why mere prompting was
+insufficient. In a $96$-candidate whole-module pilot (four conditions, two
+seeds, twelve fresh programs each), only three generated programs solved both
+small training cases: one with no standard references and two from independent
+resampling. The card-assisted and withheld-card arms solved none. The initial
+pilot also had a seed-baseline output-path collision, so its candidate outcomes
+are useful failure records but its baseline timings are not used for a
+performance claim. A later function-patch experiment produced an accelerated
+projected-gradient candidate and, in one withheld-card lineage, an LLM-written
+CPU active-set solver. Seven valid descendants in that lineage are variations
+of the same family, not seven independent discoveries. The active-set program
+certified five of five Cuprite-512 validation repetitions, but failed all five
+Cuprite-8192 repetitions under the $60$\,s cap. It did not recover the full
+large-scale HSI method. This within-lineage repetition is consistent with the
+structural revisitation documented by \citet{gurkan2026mutation}, but the
+present run does not isolate that mechanism from parent selection or prompt
+history.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+Executable space & Full cards & Withheld cards & Random & Resample \\
+\midrule
+Whole module, 24/arm & 0 & 0 & --- & 2 \\
+Function patch, 24/arm & 1 & 8 & --- & 0 \\
+Typed FBS/DRS, 32/arm & 15 & 4 & 1 & 6 \\
+\bottomrule
+\end{tabular}
+\caption{Earlier ablations: number of fresh candidates solving both small
+training cases. The whole-module and patch spaces also included a
+no-references arm (1/24 and 0/24 respectively). The typed withheld-card column
+is its ordinary-LLM arm. The patch total of eight includes seven variants of
+one active-set family; the typed experiment used a different action space and
+had a later corrected retirement adapter. Rows are separate experiments, not
+pooled hit-rate estimates or demonstrations of complete method recovery.}
+\label{tab:llm-loop-earlier-ablation}
+\end{table}
+
+A compact typed space removed most source-format failures and let the model
+compose textbook FBS or DRS, factor policies, precision, device, retirement,
+and work width. In a separate small-case league starting from plain FBS, the
+LLM reached DRS with a cached inverse and GPU execution on fresh candidate~6.
+Its paired three-repetition contest against the fixed audit ADMM program
+showed a $1.157\times$ geometric-mean speed ratio on the \emph{two training
+cases}; a paired bootstrap over these fixed cases returned
+$[1.141,1.176]$. That interval concerns timing repeatability on those cases,
+not population-level generalization. The solver then passed ten of ten held-out
+validation executions. It had neither observed pixel retirement nor screened
+certificate cadence, so it was a recovery of the mathematical core and factor
+policy, not the complete HSI implementation.
+
+The decisive prospective change made certificate policy executable and exposed
+a direct ADMM spelling alongside the already available DRS map. For this
+identity split, the two updates use different carried variables but have the
+same primal iteration under $v=z+u$; a differential test of 300 transitions
+across step sizes and relaxations had maximum state discrepancy
+$2.14\times10^{-14}$. This equivalence was documented before the full scheduled
+method was found. The original direct-ADMM audit is preserved separately from
+a secondary semantic audit that accepts this explicit DRS representation.
+The direct ADMM adapter is tested numerically against an independent NumPy
+implementation, including factor choices and rank-deficient admission, without
+claiming a new formal theorem for its execution wrapper.
+
+In the final withheld-card chain, candidate~5 first assembled direct ADMM,
+float64 GPU execution, a shared host-computed inverse, relaxation $1.6$,
+resolvent step $1$ (equivalently $\rho=1$), and pixel retirement. It certified
+all three training cases, but still checked on the host after each chunk.
+Candidate~6 retained that splitting, factor reuse, precision, device, and
+retirement; it selected screened certification and changed the compiled chunk
+from $500$ to $128$. It was the \emph{sixth fresh candidate} in that chain.
+The private audit matched its emitted source hash to the trusted compiler output
+and observed one factor build, actual compiled ADMM dispatches, GPU array
+residence, active-column removal, more device screens than external host checks,
+and independent certification of every original column. On Cuprite-4096 it
+made 93 ADMM-kernel dispatches, 115 device screens, and 23 host certificates,
+with the minimum active batch shrinking to 287 from 4,096. On Cuprite-16384
+these counts were 122, 144, and 23, with the active batch shrinking to 824.
+These are Python dispatch counts into compiled functions, not physical CUDA
+kernel counts or actual iteration counts. The model's prose rationale is never
+used as an audit witness.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{clrrl}
+\toprule
+Fresh try & Main composition & Step/relaxation & Train solved & Missing mechanism \\
+\midrule
+1 & DRS, float32, host check & $10^{-3}/1.6$ & 1/3 & numerical accuracy, cadence \\
+2 & ADMM, float64, host check & $10^{-3}/1.6$ & 1/3 & effective penalty, cadence \\
+3 & FBS, float32, host check & $0.5/1$ & 1/3 & splitting, cadence \\
+4 & FBS, float32, host check & $0.9/1$ & 1/3 & splitting, cadence \\
+5 & ADMM, float64, host check & $1/1.6$ & 3/3 & screened cadence \\
+6 & ADMM, float64, device screen & $1/1.6$ & 3/3 & complete recovery \\
+\bottomrule
+\end{tabular}
+\caption{First six distinct withheld-card proposals in order. The first
+numeric value is the resolvent step for DRS/ADMM ($1/\rho$) and the forward
+step fraction for FBS; the second is relaxation where applicable. All six used
+the same legal grammar, fixed three-case training distribution, and an A100
+worker. Tries 1, 2, 5, and 6 chose a shared host-computed inverse and active
+column retirement; tries 3 and 4 chose FBS. Candidate~6 changed the host
+check to a device screen and chunk length from $500$ to $128$ relative to
+candidate~5. The six Qwen calls took $22.137$\,s of proposer time, used
+$25{,}973$ prompt and $2{,}700$ completion tokens, and produced six fresh
+evaluations. The training-case algorithm clocks summed to $1{,}118.485$\,s
+across those six candidates, including capped failures; this sum is search
+compute, not time-to-solution for the final solver.}
+\label{tab:llm-loop-lineage}
+\end{table}
+
+Candidates~2 and~5 differed in the canonical genome only at the resolvent
+step: $10^{-3}$ versus $1$ (equivalently $\rho=1000$ versus $1$), turning two
+over-budget real cases into two certified real cases under the same other
+selected moves. Candidates~5 and~6 changed \emph{both} certification policy
+and compiled chunk length, so their Cuprite-16384 training-time difference
+($47.472$ versus $36.392$\,s) cannot be attributed to cadence alone. These
+paired lineage observations explain the search path; they are not a randomized
+single-gene ablation. The full-card, no-card, resampling, and random controls
+address broader search behavior at matched fresh budgets.
+
+To isolate the two changes in candidate~6, we froze a \emph{post-search}
+$2\times2$ factorial on the already inspected Cuprite-10000 sealed batch.
+Starting with candidate~5, only the certificate policy (host after every
+chunk versus device screen) and compiled chunk length (500 versus 128) changed.
+The host-500 and screen-128 source hashes exactly match candidates~5 and~6.
+Each combination ran three new $120$\,s-cap processes on the same A100 GPU~2,
+in independently shuffled order; all twelve independently certified the full
+batch. Because this case had already been used to confirm the search winner,
+these numbers diagnose cost and do not count as new transfer evidence or a
+second model discovery.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrl}
+\toprule
+Certificate policy & Chunk & Median (s) & Three full-clock times (s) \\
+\midrule
+Host every chunk & 500 & 22.244 & 22.244, 21.132, 22.284 \\
+Host every chunk & 128 & 29.834 & 29.834, 29.011, 48.839 \\
+Device screen & 500 & 18.598 & 18.598, 27.755, 18.335 \\
+Device screen & 128 & 19.752 & 20.576, 19.752, 19.730 \\
+\bottomrule
+\end{tabular}
+\caption{Post-search cadence/chunk factorial on one held-out HSI batch.
+All twelve runs passed the full original-data certificate. Device screening
+reduced the median at both chunk lengths, but screen-500 was slower than
+host-500 in one of three paired repetitions. Chunk~128 was not the fastest
+screened choice on this batch. These are measured algorithm clocks including
+setup and checking, not a cross-distribution performance estimate.}
+\label{tab:llm-loop-cadence-factorial}
+\end{table}
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrr}
+\toprule
+Input and split & Cases certified & Median algorithm time (s) & Active columns, minimum \\
+\midrule
+Cuprite-4096, train & 1/1 & 16.606 & 287 \\
+Cuprite-16384, train & 1/1 & 36.392 & 824 \\
+Synthetic-96, train & 1/1 & 2.513 & 32 \\
+Cuprite-6144, sealed & 3/3 & 17.900 & 444 \\
+Cuprite-10000, sealed & 3/3 & 22.055 & 772 \\
+Synthetic-192, sealed & 3/3 & 3.055 & 128 \\
+\bottomrule
+\end{tabular}
+\caption{Direct ADMM method assembled by the withheld-card LLM loop.
+Every sealed run used the independently frozen full-batch float64 certificate;
+real held-out pixels do not occur in the search batches. ``Active columns''
+comes from observed state, not a declared gene. Algorithm time starts after JAX
+runtime initialization but includes solver setup and JIT compilation.}
+\label{tab:llm-loop-recovery}
+\end{table}
+
+A card-assisted chain also reached a full scheduled composition. Its first
+semantic recovery was candidate~3: DRS coordinates, one shared Cholesky factor,
+GPU float64, retirement, and screened certification. One Cuprite-4096 training
+row initially failed during the SSH banner exchange, before remote execution;
+it was explicitly remeasured once, and the original search failure and extra
+cost remain in the archive. That recheck, the other two training cases, and
+all nine frozen sealed runs passed. Its sealed medians were $40.888$\,s on
+Cuprite-6144, $72.061$\,s on Cuprite-10000, and $4.781$\,s on Synthetic-192.
+This is a positive control for reachability, not evidence that expert cards
+improve the hit rate; the withheld-card chain also recovered the method and was
+faster on these particular held-out batches. The completed simple-loop ablation
+must use the fixed candidate budgets, including all failures, before any
+comparative hit-rate conclusion.
+
+\begin{table}[t]
+\centering\small
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrr}
+\toprule
+Arm & Seed-0 fresh & Seed-0 solves / semantic / literal & Seed-1 fresh & Seed-1 solves / semantic / literal \\
+\midrule
+Full expert cards & 8/8 & 3 / 2 / 2 & 8/8 & 8 / 7 / 1 \\
+Withheld expert cards & 8/8 & 3 / 1 / 1 & 8/8 & 2 / 0 / 0 \\
+Uniform random & 8/8 & 0 / 0 / 0 & 8/8 & 1 / 1 / 0 \\
+Independent model resampling & 8/8 & 0 / 0 / 0 & 8/8 & 1 / 0 / 0 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Completed prospective final-space search on September~26.
+``Solves'' counts distinct candidate programs certifying all three training
+cases. ``Semantic'' additionally requires the pre-existing observed
+ADMM/DRS-equivalent factor/GPU/retirement/screened-cadence audit; ``literal''
+requires direct ADMM coordinates. Uniform random seed~1 candidate~7 was a
+semantic training hit, so method recovery is not unique to the LLM policy.
+Search cases, legal support, fresh budget, and independent
+judge are fixed across arms; expert hints are the only extra prompt content in
+the full-cards arm.}
+\label{tab:llm-loop-final-ablation}
+\end{table}
+
+We froze the uniform-random seed~1 candidate~7 before opening sealed data.
+Its compiled DRS program passed all nine independent held-out certificates
+and the same semantic execution audit, with source hash unchanged. The sealed
+median clocks were $27.859$\,s on Cuprite-6144, $31.141$\,s on
+Cuprite-10000, and $3.766$\,s on Synthetic-192. This shows that the exposed
+finite grammar itself makes a full method reachable by random search in a
+small number of trials. The observed LLM and bandit first-hit differences
+cannot establish a discovery advantage from two seeds.
+
+The earlier adversarial baseline/champion league asks a different question.
+It freezes the manually authored ADMM audit program as an initial opponent,
+without showing its source to the proposer. Two sibling proposals share each
+prompt. Single executions screen candidates, but only a challenger that
+certifies \emph{every} case enters a paired contest against the current
+champion, the original fixed anchor, and a rotating older opponent. Contest
+order is randomized; each case has three independent repetitions. Promotion
+requires the paired bootstrap lower bound from 2,000 resamples to exceed
+$1.05\times$ against the champion, no case to regress by more than $20\%$,
+and the corresponding tests against the other opponents. The champion then
+becomes the next opponent and, after promotion, the next parent. This is
+baseline-to-self competition under a fixed certificate; it updates the search
+state, not the model weights. In the
+small typed league, 22 fresh candidates produced one confirmed promotion,
+on candidate~6, and then 16 further candidates produced no promotion. A
+separate league continuing from the already discovered CPU active-set solver
+had one promotion against the reference after 11 candidates, but that first
+promotion did \emph{not} demonstrate an improvement over the inherited
+active-set program. Its matched independent-resampling continuation had zero
+promotions in eight candidates. On four larger training cases, three league
+continuations of twelve fresh candidates each produced zero promotions under
+a $60$\,s cap; even the original simple ADMM audit reference missed the
+Cuprite-16384 cap. These are negative results for repeated performance
+promotion under those budgets, not a contradiction of the later method-recovery
+result, which asks whether the model assembled the target mechanism and passes
+an independent certificate. The recovery chain used incumbent selection by
+solved count and measured time; it did not receive the hidden paper reference
+source or a reward for matching a private list of components.
+
+A separate paper-scale replay uses the complete $47{,}750$-pixel Cuprite image
+and a $300$\,s algorithm cap. Its original manually authored single-target
+schedule reached the certificate in $52.227$, $52.676$, and $51.353$\,s on an
+A100. The direct withheld-card recovery certified the same full image in
+$56.063$, $55.388$, and $54.974$\,s, all within the cap. Its median was
+$55.388$\,s, $1.061\times$ the manual schedule's median on the same A100 slot.
+The frozen source and all three execution traces also passed the private
+method audit, including actual factor reuse, GPU updates, retirement, and
+screened checking.
+In its first replay, it made one factor build, 122 compiled ADMM dispatches,
+136 device screens, and 15 host certificates; its active batch shrank from
+47,750 to 2,274 columns. The card-assisted semantic recovery reached the
+numerical certificate in all three replays, with times $303.579$, $299.809$,
+and $299.363$\,s; the first is outside the cap and its recorded
+\texttt{accepted} flag is therefore false (2/3 within budget). This scale
+replay contains training pixels and is a scale check, not another disjoint
+holdout. It also differs from the manuscript's original multi-target timing
+protocol. The withheld-card method therefore matches the manually assembled
+single-target schedule to within $6.1\%$ on this replay, without a performance
+superiority claim.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrr}
+\toprule
+Full-image method & Certificate within 300\,s & Median (s) & Three replay times (s) \\
+\midrule
+Manual paper schedule & 3/3 & 52.227 & 52.227, 52.676, 51.353 \\
+Withheld-card direct recovery & 3/3 & 55.388 & 56.063, 55.388, 54.974 \\
+RL-channel semantic recovery & 3/3 & 75.263 & 75.263, 78.001, 65.687 \\
+Card-assisted semantic recovery & 2/3 & 299.809 & 303.579, 299.809, 299.363 \\
+\bottomrule
+\end{tabular}
+\caption{Paper-scale replay on the same node-0 A100 GPU~2. The training
+distribution already contains pixels from this image, so this is a full-scale
+execution check, not a new real-image holdout. All four methods satisfy the
+numerical certificate; the 300\,s cap determines the accepted count. Setup,
+compilation, transfers, iteration, and certification are included in time.}
+\label{tab:llm-loop-fullimage}
+\end{table}
+
+\subsection{Next test: learned proposal policy}
+The simple loop keeps the proposer weights frozen; its only learning within a
+run is the search archive and execution feedback placed in the prompt. Training
+an LLM on execution feedback already has precedents in code generation and
+algorithm search~\citep{gehring2024rlef,surina2025evolutionrl}; an LLM-weight
+update here is therefore a future comparison, not a novelty claim. For a
+short-budget, directly executable RL pilot, we selected an online disjoint
+LinUCB contextual bandit~\citep{li2010linucb} that controls the \emph{proposal
+channel} while keeping Qwen's 27B weights frozen. The three actions are to ask
+Qwen for a complete typed design, mutate one legal gene of the current best
+design, or sample a fresh legal design uniformly. Mutation has no encoded
+target recipe. Every distinct admitted or rejected executable design spends
+one fresh evaluation; duplicate and malformed proposals are recorded.
+
+The nine policy features are an intercept, log-normalized design dimensions,
+log-normalized right-hand-side count, a GPU indicator, the parent's solved-case
+fraction, the measured certificate-to-step cost ratio, an indicator for a
+splitting update, and an indicator for screened certification. For each action
+$a$ the controller keeps a ridge-initialized matrix $A_a=I$ and vector
+$b_a=0$, chooses the action maximizing
+$x^\top A_a^{-1}b_a+0.45\sqrt{x^\top A_a^{-1}x}$, then updates
+$A_a\leftarrow A_a+xx^\top$ and $b_a\leftarrow b_a+r x$ from the executed
+candidate. The fixed bounded reward is at least $0.8$ only when \emph{all}
+training cases satisfy the independent numerical judge; accepted designs then
+receive a small log-time preference using the full algorithm clock. Otherwise
+the reward is at most $0.3$, based on accepted-case fraction and certified
+column fraction. The private method-identity audit is never in the reward or
+prompt. Model, mutation, and random streams have separate seeds. Source,
+requests, outcomes, policy matrices, and selected actions are logged after each
+evaluation. This controller is a limited one-step RL policy, not LLM
+fine-tuning or evidence of transferable reasoning.
+
+Two on-policy seeds of eight fresh evaluations on the same three HSI training
+cases and six-A100 fleet are the direct fixed-budget pilot. The comparison to
+the frozen simple loop uses the same compiler, references, numerical gate,
+cases, and per-case cap; model-query counts and wall time are also retained.
+This controller was chosen after the simple HSI recovery was observed, so the
+pilot is an engineering comparison rather than a preregistered RL efficacy
+test. A fresh task family is needed for an unbiased transfer claim.
+A separate cell-deconvolution assay freezes disjoint LM22 training columns and
+LM22/TIL10 held-out columns. It tests an application and distribution shift
+under the \emph{same simplex least-squares objective}, not a new mathematical
+problem class. The frozen simple loop's second fresh deconvolution proposal
+was float64 GPU FBS with screened checking and certified both LM22 training
+batches. Freezing that candidate before evaluation, it passed all nine sealed
+runs: three each on disjoint LM22-2048, TIL10-2048, and TIL10-4096, with
+median times $2.167$, $1.967$, and $1.859$\,s. Its success is an independently
+certified solver for this distribution, not recovery of the HSI ADMM method.
+The deconvolution RL pilot initializes from a frozen policy after one executed
+HSI update; it was launched after the simple deconvolution run had already
+found this solver, so its comparison is exploratory and cannot establish an
+unbiased transfer gain. Its first two fresh actions (random, then mutation)
+failed both training cases. The first model action, on candidate~3, certified
+both cases with FBS, and the frozen candidate passed all nine sealed runs.
+However, it selected CPU admission, host checks, and a 1,024-step chunk,
+whereas the pure-loop candidate used GPU admission and screened checking.
+The RL candidate was slower on every held-out batch: median $21.021$ versus
+$2.167$\,s on LM22-2048, $3.373$ versus $1.967$\,s on TIL10-2048, and
+$5.925$ versus $1.859$\,s on TIL10-4096. Thus it did not improve first-hit
+count or certified runtime on this application shift, despite passing the same
+numerical bar. At the complete eight-fresh-evaluation budget, six pure-loop
+and four bandit candidates certified both deconvolution training batches.
+The pure loop made nine model calls (one duplicate proposal), while the bandit
+made seven model calls (including duplicate proposals) plus its mutation and
+random actions. Fewer model calls did not buy more recoveries here.
+The primary scientific quantity remains first complete recovery
+within a fixed fresh-evaluation budget on genuinely new classes and hardware.
+Neither that transfer nor any RL gain is inferred from a successful HSI-only
+run. The H100 serves the proposer; timing on it would require a separate
+non-overlapping session after inference completes. All present RL executions
+use A100s, so the policy's GPU indicator is constant and these runs cannot
+establish learned cross-device adaptation.
+
+At the 08:09\,UTC manuscript snapshot, HSI bandit seed~0 had completed all
+eight fresh evaluations: one mutation, one random design, and six model
+proposals. The third certified all three training cases, but lacked observed
+active-column retirement and therefore failed both the literal and semantic
+whole-method audits. The fourth retained screened GPU splitting and factor
+reuse, added active-column retirement, certified all three cases, and
+passed the pre-existing ADMM/DRS \emph{semantic} execution audit. Its literal
+direct-ADMM audit remains false because it executes DRS coordinates.
+The controller received rewards $0.100$, $0.100$, and $0.873$ after the first
+three executions; the high reward on the third, model-generated solver led it
+to query the model again for candidate~4 rather than spend that next fresh
+evaluation on random sampling or mutation. Candidate~4 received $0.896$.
+This is the observed feedback-to-action path, not an isolated proof that
+LinUCB caused the subsequent model proposal to succeed.
+This is first training method recovery at candidate~4 versus candidate~6 in
+the frozen withheld-card seed~0 chain, a two-evaluation reduction in one
+seed. Four of eight bandit candidates passed the pre-existing semantic audit,
+versus one of eight in that plain withheld-card chain. A separately seeded
+uniform-random chain also produced one semantic hit in eight and passed all
+nine sealed checks; this prevents attributing recovery itself to either the
+LLM or LinUCB. The bandit made seven
+model calls including one duplicate proposal, versus nine model calls
+including one duplicate in the plain chain. Up to first recovery, the bandit
+used two Qwen calls ($10.964$\,s, $6{,}890$ prompt and $1{,}490$ completion
+tokens); the plain chain used six ($22.137$\,s, $25{,}973$ prompt and $2{,}700$
+completion tokens). The frozen first RL recovery then
+passed all nine sealed checks and all three paper-scale replays; both the
+source-hash and semantic execution audits passed. Its sealed medians were
+$16.823$\,s on Cuprite-6144, $20.867$\,s on Cuprite-10000, and $3.888$\,s
+on Synthetic-192. The full-image median was $75.263$\,s, slower than the
+withheld-card direct recovery's $55.388$\,s and the manual schedule's
+$52.227$\,s. These are one-seed observations, not a controlled estimate of a
+transferable RL effect.
+Seed~1 completed eight evaluations (five model, two mutation, one random
+design); two candidates certified all three training cases, but none passed
+the semantic full-method audit. Thus across the two HSI seeds the bandit had
+four method hits in sixteen fresh evaluations, versus one in sixteen for the
+withheld-card loop, one in sixteen for uniform random, and zero in sixteen for
+independent model resampling. These counts are descriptive: the bandit was
+designed after seeing the first plain HSI result, and two seeds do not estimate
+a transferable policy benefit. On
+deconvolution, the bandit first certified both LM22 training
+batches at fresh candidate~3, one candidate later than the frozen Qwen loop's
+candidate~2. Its frozen first training solver passed all nine sealed runs but
+was slower than the pure-loop solver on every batch, as reported above.
+This deconvolution result is negative for the chosen RL controller;
+cross-class and cross-device gains remain untested.
+
+At eight fresh evaluations in seed~0, the sums of all measured training-case
+algorithm clocks were $1{,}501.056$\,s for the plain withheld-card HSI loop
+and $1{,}007.012$\,s for the bandit loop. The analogous deconvolution sums
+were $308.896$ and $632.461$\,s. Every candidate in these four chains passed
+admission, so these sums contain actual timed training evaluations, including
+failed and over-budget runs; they exclude admission, proposer inference,
+transport, and lock waiting. HSI model-call time summed to $32.524$\,s for
+plain Qwen and $38.680$\,s for bandit-controlled Qwen, despite the latter's
+smaller call count. The sums describe search cost on these particular chains,
+not the final solver runtime or a cross-task efficiency guarantee.
+
+\clearpage
+\begin{table}[t]
+\centering\small
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lllllll}
+\toprule
+Loop & Policy weights & HSI first; hits@8 & Sealed HSI & Deconv first; hits@8 & Sealed deconv & New class/device \\
+\midrule
+Simple typed LLM & frozen Qwen 27B & 6; 1/8 s0; 0/8 s1, semantic & 9/9 & 2; 6/8 & 9/9 & not tested/not tested \\
+RL channel policy & LinUCB online; Qwen frozen & 4; 4/8 s0; 0/8 s1, semantic & 9/9; full 3/3 & 3; 4/8 & 9/9, slower & not tested/not tested \\
+Uniform random control & no learned weights & 7; 0/8 s0; 1/8 s1, semantic & 9/9 & not run & not run & not tested/not tested \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Completed fixed-budget comparison on September~26, 2026. The
+seed~0 RL hits are ADMM-equivalent DRS executions; their original literal-ADMM
+audits are false. Bandit seed~1 completed eight fresh evaluations with zero
+semantic method hits. Uniform random also had one
+semantic hit in its completed seed~1 and passed all nine sealed checks.
+This one-step RL controller does
+not update LLM weights. A transferable RL claim requires fixed-budget recovery
+on independent classes and devices, with all proposal and execution costs
+reported. Deconvolution is an application shift within the same mathematical
+class. ``First'' counts fresh executable candidates; the HSI and deconvolution
+success conditions differ as described in the text.}
+\label{tab:llm-loop-rl-comparison}
+\end{table}
+\FloatBarrier

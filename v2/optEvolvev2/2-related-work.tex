@@ -1,0 +1,48 @@
+\section{Related work}
+
+\paragraph{Evolutionary and feedback-guided search.}
+FunSearch and AlphaEvolve use language models to propose programs within
+evaluation-driven search \citep{RomeraParedes2023Mathematical,Novikov2025AlphaEvolve}.
+ReEvo combines evolutionary heuristic search with reflection
+\citep{Ye2024ReEvo}, while GEPA uses execution feedback in prompt evolution
+\citep{Agrawal2025GEPA}. These works establish the proposal, population and
+feedback mechanisms. OptEvolve uses structured recipes whose mathematical
+eligibility is checked before solver execution. Its current search loop is
+implemented in the v2 package; OpenEvolve and SkyDiscover are related search
+infrastructures, not the evaluator or engine used in the reported v2 hardware
+diagnostics \citep{Sharma2025OpenEvolve,Liu2026SkyDiscover}.
+
+\paragraph{Automated optimization research.}
+AutoOPT combines BnB-PEP numerical design, LLM-assisted symbolic discovery,
+Lean verification and human interpretation \citep{Kim2026AutoOPT}.
+\citet{Yoon2026Lyapunov} connect computer-assisted convergence analysis with
+Lyapunov proofs and identify an exact optimal proximal method for strongly
+monotone inclusions. These are close precedents for algorithm and proof
+discovery. OptEvolve currently searches within existing splitting constructions
+and scores measured execution on a target distribution and device. Its Python
+construction checker and numerical admission tests do not provide the
+machine-checked proof assurance of Lean. We make no claim to introduce
+automated optimization discovery or verification feedback itself.
+
+\paragraph{Splittings and practical solver tuning.}
+The mathematical substrate is the established theory of monotone-operator
+splittings \citep{RyuYin2022LargeScale,ChambollePock2011First,Condat2013Primal,
+Vu2013Splitting,DavisYin2017Three}. Relaxation, preconditioning and restarts
+are established solver components, including in PDLP and OSQP
+\citep{Applegate2021Practical,Stellato2020OSQP}. Termination-check frequency
+is already configurable in PDLP \citep{ORToolsPDLP2026}; checking a certificate
+less frequently is therefore a baseline implementation choice. Comparisons
+must give competing recipes access to the same eligible execution policies.
+The static PDHG configurations in our LP diagnostic are not the full adaptive
+PDLP algorithm or a substitute for a production-solver comparison.
+
+\paragraph{Hardware-aware kernel optimization.}
+Hawkeye supplies coding agents with executable demonstrations of hardware
+optimization strategies \citep{Hawkeye2026}. It motivates measured hardware
+context and reference tests for implementation choices. Our current native
+generator is restricted to FP64 CSR update templates for standard LP PDHG;
+TV execution uses XLA-generated kernels. A numerical agreement test provides
+evidence about an implementation, not a proof of floating-point refinement.
+End-to-end solve time also includes certificate computation and detection
+delay, so isolated kernel speed and launch count do not determine recipe
+quality.

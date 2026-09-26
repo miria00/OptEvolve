@@ -1,0 +1,151 @@
+% Section 0: Abstract.
+% OptEvolve, ICLR 2027 submission draft, 10 September 2026. Rewritten 10 Sep 2026
+% against FACTCHECK_DEFECTS.md; every number below was recomputed from the named
+% file under /home/miria/OptEvolve/v2/results/ before it was written here.
+% STYLE CONTRACT: no em-dashes, no en-dashes, no triple hyphen dashes, no italic
+% macros, pure ASCII, plain declarative prose.
+%
+% NUMBER LEDGER. Each entry names the file a coauthor should open to recheck.
+%
+% source: 584.0 / 597.3 / 682.7, condat_vu_banked, f64, cadences 16 / 64 / 256,
+%   mean over 6 instances at 256 pixels. Per-instance vectors are
+%   [1008,512,608,416,320,640], [1024,512,640,448,320,640] and
+%   [1024,512,768,512,512,768], byte for byte the same on both devices.
+%   results/tv_ffi_20260906/cadence_4090_v1/factorial.json (4090)
+%   results/bw_20260909/sz256_bw/factorial.json (sm_120)
+%   QUALIFIER, why the text says "at 256 pixels" and "for a fixed instance":
+%   at 128 pixels the same triple is 552.0 / 576.0 / 682.7
+%   (results/bw_20260909/sz128_bw/factorial.json), and at cadence 64 the count is
+%   576.0 / 597.3 / 736.0 / 1066.7 at 128 / 256 / 384 / 496 pixels
+%   (results/tv_size_20260909/sz{128,256,384,496}_4090/factorial.json).
+%   The triple is also not available for the hand written kernel at cadence 16;
+%   kernelhost_4090/factorial.json holds cadences 64 and 256 only, so no clause
+%   here claims the triple recurs under a hand written kernel.
+% source: 72 of 72, eight arms, zero iteration mismatches. Recomputed over the
+%   fourteen full_*.json and large_*.json files in
+%   results/kernel_fusion_20260909/{e2e,e2e_bw,large,bw_day2}.
+%   QUALIFIER: args.K = 256 in all fourteen, so the agreement resolves the
+%   iteration count only to the nearest 256. The text says so.
+% source: 2.6x = 2.6294, worst arm over best arm summed across 6 instances,
+%   xla_device 0.06647 s over tf8x4 0.02528 s, at 128 pixels,
+%   results/kernel_fusion_20260909/e2e/full_4090_sz128.json. repeats=3 there, and
+%   a repeats=9 rerun at other sizes drifts 4 to 5 percent, so two digits only.
+% source: 0.778x = tf8x4 against the traced device loop at 496 pixels, cadence 256,
+%   median of 9, results/finish_20260910/fusion_r9_sz496.log (best tile 1.428x).
+%   Against the unfused static loop the same tile is 0.660x (0.19347 / 0.29296),
+%   so "slower than not fusing" holds against either baseline.
+%   This replaces the old 0.743x, which was a repeats=3 value.
+% source: 1.00x and 1.30x = pdhg_banked over condat_vu_banked penalized SGM-1 at
+%   tolerance 1e-4: 1.0009 on XLA f64_K256 and 1.2999 on tv_fused128_K256,
+%   results/tv_ffi_20260906/kernelhost_4090/factorial.json. The old unqualified
+%   "cost per iteration is insensitive to scheme identity" is deleted: it is true
+%   on XLA and false on the kernel this paper builds.
+% source: 4.3x = 4.3125, summed train iterations of the balanced preset over the
+%   banked preset at cadence 256 and tolerance 1e-4 (17664 / 4096),
+%   results/method_axis_20260909/factorial.json. At cadence 64 the same ratio is
+%   4.8393, and at tolerance 1e-6 the balanced preset solves 0 of 6, which is why
+%   the cadence and the tolerance are named in the sentence.
+% source: omega0 transfer. ONE PROTOCOL is used wherever these numbers appear,
+%   in this file and in sections 1, 5 and 6, and it is stated in words in every
+%   caption that reports them. An instance is a (cell, seed, alpha) triple; the
+%   metric is the certified iteration count N; the oracle is the minimum
+%   certified N over that instance's own ratio grid; a run that fails to certify
+%   inside the 60000-iteration cap is charged 60000 iterations, so every policy
+%   is scored on every instance of the set; the rule value is snapped to the
+%   nearest grid ratio in log space; the fixed baseline is the single grid ratio
+%   minimising geometric mean regret on the evaluation set itself, chosen
+%   separately for each set, which favours the baseline.
+%   Fitted on netflow only, results/finish_20260910/omega_wide_bw.json, 108
+%   instances: the joint argmin over p on a 0.05 grid and C on a 0.01 dex grid is
+%   p = 2.00, C = 0.977, geometric mean regret 1.186, worst 2.125. The old
+%   C = 1.10 and C = 1.16 pairs are deleted; 0.977 at p = 2 is the argmin on the
+%   set the rule is fitted on.
+%   Held out and never fitted: omega_ot_wide.json (54), omega_mcf.json (54),
+%   omega_holdout.json (54), 162 instances in three families.
+%   Best fixed ratio per set under the protocol above: 1.428 (optimal transport,
+%   r = 100), 2.840 (multi-commodity flow, r = 0.1), 2.514 (held-out topologies,
+%   r = 0.003). Geometric mean over the 162 instances 2.1681, so 2.17x.
+%   The same rule on the same 162 instances: 1.131, so 1.13x, and it certifies
+%   162 of 162 while the three fixed ratios certify 146. Across the fits within
+%   one percent of the netflow optimum, p from 1.85 to 2.15 with C refitted at
+%   each, the pooled figure moves only between 1.119 and 1.132, which is why it
+%   is printed to three digits and no further.
+% source: exponent. ONE verdict, used in this file and in sections 1, 5 and 6.
+%   CONVENTIONS, named in the caption of the exponent table in section 5: an
+%   instance is censored when any ratio attaining its minimum certified N sits at
+%   an endpoint of that instance's grid, and tied argmin ratios are averaged
+%   geometrically before the log-log fit. Under those conventions, over five ratio
+%   grids of increasing width, censoring is 102 of 209, 33 of 108, 46 of 144, 15
+%   of 80 and 14 of 88, the slope is -0.94, -1.54, -1.58, -1.68 and -1.74, and the
+%   regret-minimising exponent is 2.10, 2.00, 1.90, 2.00 and 2.00.
+%   results/finish_20260910/omega_4090.json + omega_bw.json, omega_wide_bw.json,
+%   omega_seeds8.json, omega_fine_4090.json, omega_ultrawide_bw.json.
+%   The finer 19-point grid, omega_fine_4090.json, has run and is included; it
+%   does not move the estimate, sitting between the wide and ten-decade grids on
+%   both estimators.
+%   On the ten-decade grid, with C on a 0.01 dex grid, geometric mean regret is
+%   1.0755 at p = 1.75, 1.0702 at 1.80, 1.0618 at 2.00 and 1.0732 at 2.30.
+%   The two estimators approach each other from opposite sides as censoring falls
+%   and have not met, so they bracket the exponent between about 1.7 and 2.1.
+%   Do not write "exactly 2", do not write "matches PDLP", and do not write
+%   "approximately 1.8": no estimator returns 1.8 as an argmin on any grid.
+% source: the sweep moves omega0 by rescaling c, which is identically
+%   (tau, sigma) -> (alpha tau, sigma / alpha), so the construction gate is
+%   invariant while the step ratio moves. At alpha = 1 the four families span
+%   0.542 to 8.252 (minimum results/finish_20260910/omega_ot_wide.json, maximum
+%   omega_wide_bw.json). The old "6.969 to 9.125" was netflow alone and is deleted.
+% source, new artifact, machine-readable fANOVA:
+%   results/artifacts_20260910/fanova.json. Percent of variance in log time at
+%   tolerance 1e-4: cadence 47.43, execution 25.96 in interaction with cadence,
+%   execution 15.98, precision 2.90; algorithm 0.00 at 1e-4 and 0.34 at 1e-6.
+%   These back the "disjoint parts" claim in sentence one and are carried with
+%   their labels in 5-experiments.tex. No percentage is printed in the abstract.
+% source, new artifact, kernel admission now archived:
+%   results/artifacts_20260910/kernel_admission_4090.log, 106 lines, worst absolute
+%   deviation 4.649e-15 over the fused variants at rho=1.9, PASS. Every sentence
+%   in the draft that denied this archive has been removed, from 3-methods.tex,
+%   INTEGRATION.md and TITLE_OPTIONS.md.
+%
+% DELETED because they did not reproduce, per the hard rule:
+%   (1) "worst case from 23.03x to 3.87x". The 23.03x baseline is the
+%       geomean-optimal constant, not the worst-case-optimal one, so the pair is
+%       not like for like. The worst-case-optimal fixed ratio r=0.3 gives 6.583x.
+%       Under the protocol this paper now uses, which charges a capped run at the
+%       cap, the same geomean-optimal baseline is 26.04x. No worst-case claim is
+%       made here.
+%   (2) "r = C/omega_0^2" as an identified exponent. See the exponent entry.
+%   (3) "1.827x to 1.181x" over 209 instances. In sample, grid-floor baseline, and
+%       computed under the discarded protocol that scores the baseline only where
+%       it certifies, on 208 instances against 209 for the rule. Section 5 prints
+%       1.851x to 1.181x on all 209 under the adopted protocol, in sample.
+%   (4) "natively spans only 6.969 to 9.125". Netflow only.
+%   (5) "Cost per iteration is insensitive to scheme identity", stated with no
+%       kernel qualifier.
+%   (6) "584.0 recurs under XLA and a hand written kernel". No cadence-16 custom
+%       kernel run exists under results/.
+%
+% STILL NOT CLAIMED: no LLM advantage (the arms shared an RNG stream), no
+% joint-search advantage over sequential, no general accelerator portability from
+% two architectures, and the frozen final holdout has never been evaluated.
+
+\begin{abstract}
+Time to a certified solution factorises into an iteration count and a cost per
+iteration; the two depend on disjoint parts of a solver recipe. We measure it
+on total variation denoising, min-cost flow, multi-commodity flow and optimal
+transport, on two GPU architectures. For a fixed instance, certificate cadence
+and termination tolerance set the iteration count: at $256$ pixels the
+Condat-Vu means $584.0$, $597.3$ and $682.7$ at cadences $16$, $64$ and $256$
+agree instance by instance on both devices, and eight execution and kernel
+arms agree in 72 of 72 instances, all at cadence $256$, which resolves it only
+to the nearest $256$. Run times across them differ by $2.6\times$; the wrong
+temporal tile gives $0.778\times$, slower than not fusing. Scheme identity is
+inert under XLA ($1.00\times$) but costs $1.30\times$ on a hand written
+kernel. Step sizes are worth $4.3\times$ on that count at cadence $256$,
+tolerance $10^{-4}$. Fitted on netflow alone, a rule $r = C/\omega_0^p$ in the
+scale ratio $\omega_0 = \|c\|/\|b\|$ cuts geometric mean regret against a
+per-instance oracle from $2.17\times$ to $1.13\times$ on 162 held-out
+instances in three unfitted families, both policies scored on every instance
+with capped runs charged at the cap; two estimators bracket $p$ between about
+$1.7$ and $2.1$. Two architectures are not a portability claim; the frozen
+holdout is unevaluated.
+\end{abstract}

@@ -1,0 +1,83 @@
+Canonical problem class
+A family supplies matvec and adjoint callables, block metadata, training instances, a target instance and accuracy, and available devices. OptEvolve retains reusable candidates and costs; on the target it returns a route and a point that passes the original-problem check (Section~ sec:exp:protocol), or reports no answer within budget. Its composite convex model is
+ 
+ _x f(x)+g(x)+h(Lx),
+ 
+where f has a Lipschitz gradient, g,h have computable proximal steps, and L has an adjoint and a valid norm bound. A proximal step minimizes g(u)+\|u-v\|^2/(2 ); for a constraint indicator it projects onto the feasible set. An iteration operator T maps the current (possibly primal--dual) state to the next. Splitting constructs T from updates for the separate terms .
+
+Solvers as typed genomes
+
+A genome specifies a base scheme (forward--backward, Douglas--Rachford, Davis--Yin, primal--dual hybrid gradient, or Condat--V\~u), stepsizes, and optional relaxation . Associated genes select a solution-preserving formulation, projection implementation, and backend. Canonical serialization deduplicates proposals; typed mutations cannot silently change the mathematical meaning of a field. The certified grammar is defined in Section~ sec:theory.
+
+Certified method mixing
+
+The gate certifies base schemes and relaxation, not arbitrary blends, adaptive policies, or free-form switching. Conditional blend and safeguarded-step rules appear in Appendix~ app:theory; they are not used in the reported experiments.
+
+Hardware-aware backend genes
+
+The backend genes choose precision, batching, and per-device execution, including a temporally fused GPU tile or an unfused loop. Candidate kernels are checked against reference updates; the exact-operator certificate does not cover their floating-point behavior. Calibration prices each tile on its target device rather than transferring a winner across GPUs (Appendix~ app:methods).
+
+Formulation genes
+
+Formulations can equilibrate rows or move recognized constraints from h(Lx) into the projection in g, changing iteration count and cost without changing the underlying solution. Relocation requires a valid recovery map, a new bound for the transformed operator, and an exact mathematical projection; only then can the scheme certificate transfer (Proposition~ prop:formulation-transfer, Appendix~ app:theory).
+
+Operator synthesis under contract
+
+When projection time limits a promising route, an LLM proposes a faster implementation for a specified set and device. Before a proposal is used in a solve, a contract harness checks it against a reference projection on tested inputs, including degeneracies. Passing finite tests does not prove equality to the exact projection for all inputs. Admitted implementations are timed on each device (Appendix~ app:methods).
+
+The gene pool, the cost model, and routing
+
+An append-only gene pool stores accepted designs, measurements, and rejection feedback. The router estimates T= setup+N( formulation)\,t( operator, device), using measured iteration counts and calibrated per-device costs, not an operator-norm proxy. It considers evolved candidates and recognized generic or structure-specific engines; unmeasured choices are explored within budget. Every returned answer passes the same original-problem check, regardless of route.
+
+Certified method mixing
+
+Mixing methods offers three extensions of increasing aggressiveness. The
+reported experiments do not rely on them, and the soundness theorem for the
+base grammar does not automatically cover them.
+
+Averaged blending. A convex combination
+ avg( ; T_1, T_2) = T_1 + (1- ) T_2 of two
+averaged operators is averaged with a computable constant
+ [ 2.3]RyuYin2022LargeScale, given in closed form by
+ CombettesYamada2015Compositions.
+Lemma~ lem:blend in Appendix~ app:theory gives a certificate rule
+when both maps share a state and metric and have a nonempty common
+fixed-point set. A common fixed point is a semantic obligation not established
+by the present syntactic scheme gate. Thus the lemma describes a conditional
+extension, not an automatically admitted genome covered by
+Theorem~ thm:soundness.
+
+Three-operator splitting. Davis--Yin splitting
+ is the canonical certified fusion of
+forward--backward and Douglas--Rachford, handling all three blocks of
+problem~ eq:composite simultaneously; it enters the genome as one
+additional base scheme with its own gated side condition.
+
+Safeguarded switching. A switch( trigger,
+ aggressive, fallback) gene runs an aggressive component
+(stepsizes outside the certified region, Anderson-type extrapolation,
+aggressive restarts) under a summable-error safeguard. Relative to the
+certified fallback step, the accepted perturbation at iteration k must have
+metric norm at most a prescribed _k with _k _k< ;
+otherwise the fallback step is taken. The resulting inexact iteration
+therefore inherits the fallback's convergence (Section~ sec:theory). The hand-designed
+literature illustrates distinct ways to compose solver decisions: HPR-LP
+uses Halpern-accelerated semi-proximal Peaceman--Rachford splitting
+, whereas PDLP adapts the primal weight of a PDHG-based
+solver . A switch gene would make guarded
+versions of such decisions searchable; its convergence claim depends on the
+stated summable-error condition.
+
+Blends and safeguarded switching are promising directions for discovering
+compositions beyond single schemes. They are not exercised in
+Section~ sec:experiments; blending requires a common-fixed-point
+witness or a restricted constructive typing rule before it can be admitted
+with the guarantee claimed for the formal grammar.
+
+Hardware-aware backend genes
+
+A second family of genes controls not what iteration runs but
+how it is computed: floating-point precision, batching across
+instances, sparse-matrix format, and kernel-fusion strategy. The construction
+certificate concerns an exact operator T, not the backend's floating-point
+behavior. Fusion, precision, and block sizes can cha

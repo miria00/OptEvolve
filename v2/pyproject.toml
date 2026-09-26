@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optimization-atlas"
+version = "0.2.0"
+description = "Optimization Atlas v2: typed operator-splitting solver framework in JAX (P0 core)"
+requires-python = ">=3.10"
+dependencies = [
+    "jax",
+    "numpy",
+    "scipy",
+    "datasets",
+    "pillow",
+    "pyyaml",
+    "requests",
+    "pypdf",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "cvxpy"]
+
+[tool.setuptools.packages.find]
+include = ["atlas*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: needs the live vLLM endpoint",
+]

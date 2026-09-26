@@ -1,0 +1,8 @@
+submission.pdf
+*.aux
+*.blg
+*.bbl
+*.log
+*.out
+*.synctex.gz
+*.pdf

@@ -1,0 +1,80 @@
+\section{Further certificate consequences}
+\label{app:theory-discussion}
+
+\begin{remark}[What the certificate buys the search]
+\label{rem:relaxation-window-details}
+Because $1/\theta_G=2-c_G$ for every base scheme, the certified
+over-relaxation window is exactly $\rho\in(0,2-c_G)$: the textbook interval
+$(0,2)$ for the schemes with no forward step, shrinking as the forward step
+consumes the budget. For Condat--V\~u this window is not a conservative
+surrogate. \citet[Theorem~3.1]{Condat2013Primal} proves convergence of the
+same relaxed iteration for
+$\rho_n\in\bigl(0,\delta\bigr)$ with
+$\delta=2-\frac{\beta}{2}\bigl(\frac1\tau-\sigma\|L\|^2\bigr)^{-1}$, where
+$\beta=L_f$ is the Lipschitz constant of the smooth gradient. Multiplying
+numerator and denominator by $\tau$ gives
+$\delta=2-c_\star$, where
+$c_\star:=\frac{\tau L_f}{2(1-\tau\sigma\|L\|^2)}$ is the forward-step
+constant computed with the exact operator norm. Since $\ell\geq\|L\|$, it follows
+that $c_\star\leq c_G$ and hence $2-c_G\leq\delta$. The certified window
+therefore coincides with Condat's when $\ell=\|L\|$, and is contained in it
+when $\ell>\|L\|$. The discovered policy of Section~\ref{sec:results}
+illustrates this effect. The certified textbook default
+$(\tau,\sigma)=(0.5,0.186)$ has $c_G\approx0.97$ and therefore admits almost
+no over-relaxation at all, $\rho<1.03$, whereas the evolved
+$(\tau,\sigma)=(0.05,1.0)$ has $c_G=0.042$ and admits $\rho<1.96$. Shrinking
+the primal step does not merely satisfy the gate, it widens the interval the
+relaxation gene may search in, and the champion sits near its new edge at
+$\rho=1.9$, with $\rho\,\theta=0.97$.
+\end{remark}
+
+\paragraph{Halpern genomes.}
+A certificate also determines the nonexpansive map used by the Halpern
+wrapper. The map $S_G=I+\theta_G^{-1}(T_G-I)$ is nonexpansive in
+$\|\cdot\|_{H_G}$
+with $\operatorname{Fix}S_G=\operatorname{Fix}T_G$. The wrapped iteration is
+not averaged, so Corollary~\ref{cor:convergence} does not apply. Classical
+Halpern theory instead gives its guarantee using the certificate for $T_G$.
+Under the admitted schedules, it converges to
+$P^{H_G}_{\operatorname{Fix}T_G}(z_{\rm anc})$, the $\|\cdot\|_{H_G}$-metric
+projection of the anchor, and the canonical schedule anchored at $z_0$ drives
+the squared residual at $O(1/k^2)$, exactly optimal in the black-box oracle
+model of \citet{ParkRyu2022Exact}
+(Proposition~\ref{prop:halpern}, Appendix~\ref{app:theory}). Thus, the
+Halpern gene changes the selected fixed point and the residual rate, while
+preserving convergence.
+
+\paragraph{Formulations and implementations.}
+Relocating constraints or applying fixed equilibration can change the
+splitting and hence $T_G$, but need not change the underlying optimization
+problem. For each formulation, the gate must check its own scheme inequality
+with a valid bound on its transformed operator; its decoder must recover a
+solution of the original problem. The solution-transfer rule is made explicit
+in Proposition~\ref{prop:formulation-transfer} of Appendix~\ref{app:theory}.
+In particular, an exact projection may serve as a proximal map after
+relocation; replacing it by synthesized code preserves the theorem only if
+that code implements the same map. Finite contract tests against a reference
+projection support admission of the implementation, but do not prove that
+equality for every input. Precision and fusion also change the implemented
+computation, not the certificate for the ideal map. The mathematical guarantee
+must therefore be distinguished from tests of numerical kernels and from the
+acceptance check on each returned point.
+
+\paragraph{Safeguarded schedules.}
+Corollary~\ref{cor:convergence} assumes exact arithmetic and exact atoms.
+Returned numerical points are separately checked by the acceptance criterion
+of Section~\ref{sec:exp:protocol}; the TV cell also checks its runtime duality
+gap (Section~\ref{sec:methods}). Free-form
+schedules, including the $\mathrm{switch}$ gene of Section~\ref{sec:mixing},
+run outside $\mathcal G$ under a summable-error safeguard: the
+monitor accepts a step $T_Gz_k+e_k$ only if $\|e_k\|_{H_G}\leq\eta_k$ for a
+budget satisfying $\sum_k\eta_k<\infty$. Otherwise, the monitor uses the
+certified step. This rule preserves convergence to a fixed point
+(Lemma~\ref{lem:safeguard}, Appendix~\ref{app:theory}). This extension is not
+used in the experiments. All reported runs have $e_k=0$.
+
+For a fixed admissible formulation and exact atoms, every genome admitted
+from $\mathcal G$ thus converges in exact arithmetic. Fitness selects for
+time to an accepted answer; it does not establish the convergence guarantee.
+
+

@@ -1,0 +1,255 @@
+\section{Method details}
+\label{app:methods}
+
+This appendix records the scheme checks, implementation contracts, and routing details underlying Section~\ref{sec:methods}.
+
+\subsection{Certified method mixing}
+
+Mixing methods offers three extensions of increasing aggressiveness. The
+reported experiments do not rely on them, and the soundness theorem for the
+base grammar does not automatically cover them.
+
+\textbf{Averaged blending.} A convex combination
+$\mathrm{avg}(\lambda; T_1, T_2) = \lambda T_1 + (1-\lambda) T_2$ of two
+averaged operators is averaged with a computable constant
+\citep[\S2.3]{RyuYin2022LargeScale}, given in closed form by
+\citet{CombettesYamada2015Compositions}.
+Lemma~\ref{lem:blend} in Appendix~\ref{app:theory} gives a certificate rule
+when both maps share a state and metric and have a nonempty common
+fixed-point set. A common fixed point is a semantic obligation not established
+by the present syntactic scheme gate. Thus the lemma describes a conditional
+extension, not an automatically admitted genome covered by
+Theorem~\ref{thm:soundness}.
+
+\textbf{Three-operator splitting.} Davis--Yin splitting
+\citep{DavisYin2017Three} is the canonical certified fusion of
+forward--backward and Douglas--Rachford, handling all three blocks of
+problem~\eqref{eq:composite} simultaneously; it enters the genome as one
+additional base scheme with its own gated side condition.
+
+\textbf{Safeguarded switching.} A $\mathrm{switch}(\text{trigger},
+\text{aggressive}, \text{fallback})$ gene runs an aggressive component
+(stepsizes outside the certified region, Anderson-type extrapolation,
+aggressive restarts) under a summable-error safeguard. Relative to the
+certified fallback step, the accepted perturbation at iteration $k$ must have
+metric norm at most a prescribed $\eta_k$ with $\sum_k\eta_k<\infty$;
+otherwise the fallback step is taken. The resulting inexact iteration
+therefore inherits the fallback's convergence (Section~\ref{sec:theory}). The hand-designed
+literature illustrates distinct ways to compose solver decisions: HPR-LP
+uses Halpern-accelerated semi-proximal Peaceman--Rachford splitting
+\citep{Chen2024HPRLP}, whereas PDLP adapts the primal weight of a PDHG-based
+solver \citep{Applegate2021Practical}. A switch gene would make guarded
+versions of such decisions searchable; its convergence claim depends on the
+stated summable-error condition.
+
+Blends and safeguarded switching are promising directions for discovering
+compositions beyond single schemes. They are not exercised in
+Section~\ref{sec:experiments}; blending requires a common-fixed-point
+witness or a restricted constructive typing rule before it can be admitted
+with the guarantee claimed for the formal grammar.
+
+
+\subsection{The Stage-0 type-check gate}
+
+For the base-scheme and relaxation grammar of Section~\ref{sec:theory},
+the Stage-0 gate checks the convergence side condition before execution:
+$\alpha \in (0, 2/L_f)$ for FBS and Davis--Yin; any $\alpha > 0$
+for DRS;
+$\tau\sigma\ell^2 < 1$ for PDHG;
+$\tau L_f/2 + \tau\sigma\ell^2 < 1$ for Condat--V\~u, where
+$\ell \geq \|L\|$ is the supplied operator-norm bound
+\citep[\S2.7 and \S3.3]{RyuYin2022LargeScale}; and for the wrappers,
+$\rho\,\theta < 1$ for over-relaxation of a
+$\theta$-averaged map, with Halpern anchoring admitted only
+for nonexpansive iterations. FBS, DRS, and Davis--Yin additionally require
+the exact proximal maps of their chosen splitting to be available
+(Appendix~\ref{app:theory}). A genome that satisfies its conditions receives
+a construction certificate recording the checked inequality, the
+resulting averagedness constant, and the textbook citation; a genome that
+does not is rejected, never silently clamped, and the violated
+inequality is returned verbatim as feedback to the proposer. The scheme gate
+is re-run inside every solve; a 20{,}000-genome fuzz found zero disagreements
+between that gate and the solver-level checks. The theorem also assumes an
+admissible formulation and exact atoms: Section~\ref{sec:theory}
+distinguishes these mathematical obligations from numerical contract tests.
+
+
+\subsection{Compilation and certificates}
+
+An admitted scheme is compiled to a jitted JAX iteration; the mathematical
+certificate applies to its exact reference update, not automatically to
+floating-point execution. Genome search never executes LLM-written numerical
+code. LLM-written code runs only in operator synthesis
+(Section~\ref{sec:synthesis}), where a proposed projection is executed only
+inside its contract harness and enters a solve only after passing it. Beyond the construction certificate
+(level 1), each solve carries runtime certificates (level 3): the step residual
+$\|z_{k+1}-z_k\|_{H_G}$ of Section~\ref{sec:theory} and, for
+problem~\eqref{eq:composite} with strongly convex $f$, a rigorous duality
+gap. For TV denoising the dual value at any
+$u$ with $\|u\|_\infty \le \lambda$ is
+$\langle y, D^{\!\top}u\rangle - \tfrac12\|D^{\!\top}u\|^2$, so
+$\mathrm{gap}(x, u) \ge 0$ always and termination at relative gap
+$\le \epsilon$ is a checkable certificate of $\epsilon$-optimality, not a
+heuristic stopping rule. The benchmark record also stores the original-problem acceptance result.
+
+
+\subsection{Hardware-aware backend genes}
+
+A second family of genes controls not what iteration runs but
+how it is computed: floating-point precision, batching across
+instances, sparse-matrix format, and kernel-fusion strategy. The construction
+certificate concerns an exact operator $T$, not the backend's floating-point
+behavior. Fusion, precision, and block sizes can change numerical results,
+so the implementation is checked separately by
+per-atom tests against a reference backend to tolerance, in the pattern of
+hardware-aware kernel generation for coding agents
+\citep{Hawkeye2026}. This separates two implementation-level checks from
+the certified core: a safeguard monitor for schedules above the calculus and
+unit tests for kernels below it. Neither check alone proves the
+exact-operator assumptions of Section~\ref{sec:theory}.
+
+The target hardware is visible to the search: the device identifier
+conditions the mutation context, so genomes can specialize to the
+accelerator they will run on. Kernel fusion matters most exactly where
+per-iteration work is small and launch overhead dominates, i.e.\ the
+microsecond-budget cells; batched execution matters where many instances
+are solved simultaneously. This paper ships the precision, batching, and
+fused-versus-naive step genes; autogenerated fused kernels for the atoms are
+future work.
+
+\paragraph{The fusion tile is a gene.}
+A temporally fused kernel runs $T$ iterations per launch on a $(B+2T) \times
+(B+2T)$ tile whose halo is held in shared memory, so the pair $(B, T)$ is a
+backend gene like precision or batching. Three things make it a gene rather
+than a constant. Its admissible set is device dependent: a tile whose halo
+exceeds the device's opt-in shared memory per block cannot launch at all, which
+removes a third of the grid on a consumer part and none of it on a
+data-center part. Its correctness is a contract, not an assumption: an
+admitted tile must reproduce $T$ sequential unfused iterations, which at
+relaxation $\rho = 1$ means bitwise, so the gene cannot trade accuracy for
+speed. And its value is measured, not derived: the cost model prices a tile by
+the per-iteration cost it achieves on the device in question, exactly as it
+prices an operator, so the tile competes inside
+equation~\eqref{eq:costmodel} rather than being fixed ahead of the search. At
+solve time the device is identified from its reported properties (name, compute
+capability, multiprocessor count, shared memory per block) and the tile is
+selected for that device; declining to fuse, that is, running the compiled loop
+of the array compiler, is always one of the candidates.
+
+\paragraph{The device is a candidate.}
+Because an exact operator leaves the iteration count $N$ unchanged, the same
+(formulation, operator) pair on a machine's GPU and on its CPU are two
+candidates that share one measured $N$ and differ only in setup and per-iteration
+cost. The router therefore enumerates (formulation, operator, device) triples
+and prices each device from its own calibration; a machine's CPU is a separate
+device from its GPU, and a device for which the process has no backend is
+declined rather than priced from a borrowed measurement.
+Section~\ref{sec:exp:device} reports where the device, the tile and the
+precision decision change the winner.
+
+
+\subsection{Formulation genes}
+
+The same feasible set admits many splittings of problem~\eqref{eq:composite},
+and which constraints live in the linear operator $L$ and which live in the
+proximal step is itself a gene. Relocation removes a constraint family from
+$h(Lx)$ and enforces it exactly through the projection in $g$: a single dense
+row together with the variable bounds it touches (a box intersected with a
+hyperplane or a slab), a product of disjoint such blocks, or a family of
+second-order cones. The kept rows stay in $L$ and are optionally equilibrated
+row by row. A planner reads the candidate families off $(P, q, A, l, u)$ and
+works under any row and column permutation of the instance, so nothing depends
+on how a benchmark happens to order its variables. Relocation changes the
+iteration but not the problem, and the certificate transfers only when the
+projection is exact; the planner declines when no exact projection exists.
+The formulations the router can currently choose are the standard form with
+and without Ruiz equilibration, row relocation with and without row scaling,
+product relocation under several row-selection rules, and cone relocation.
+Each transformation must preserve the original solution set under its recovery
+map and pass the scheme gate with its own operator bound; the formal transfer
+rule is Proposition~\ref{prop:formulation-transfer}. Tests of an implemented
+projection are a separate obligation from its mathematical exactness.
+
+
+\subsection{Operator synthesis under contract}
+
+A relocated formulation is only as fast as its projection, and when the cost
+model finds that the projection's per-call time is the binding term it emits a
+specification rather than a guess: the set (for example
+$\{x : lo \le x \le hi,\ a^{\top}x \in [b_{lo}, b_{hi}]\}$), the device, the
+per-call budget that would change the routing decision, and a contract of
+input conditions the implementation must handle (mixed-sign $a$, infinite
+bounds, degenerate breakpoint ties, very small and very large dimension, and
+the inputs seen in deployment). An LLM evolves implementations against that
+specification inside SkyDiscover \citep{Liu2026SkyDiscover}. A candidate
+implementation is admitted only if it passes the contract tests: agreement
+with a reference projection on every tested clause. These tests
+screen numerical code but do not prove that it equals the exact projection
+on all inputs. Admitted operators are calibrated per device and stored with
+their provenance. A projection that is fast but fails the contract tests is
+never used, however good its score.
+
+
+\subsection{The gene pool, the cost model, and routing}
+
+Evolved components, formulations, measurements, and lessons are kept in an
+append-only store, the gene pool. The router decomposes the time to a verified
+answer as
+\begin{equation}
+  T = \text{setup} + N(\text{formulation}) \cdot t(\text{operator}, \text{device}),
+  \label{eq:costmodel}
+\end{equation}
+where the iteration count $N$ is taken from measured evidence for the
+formulation and never from an operator-norm bound, and the per-iteration cost
+$t$ and the setup are taken from calibration of the operator on the device.
+Candidates are the product of formulations, contract-tested projection
+implementations, and devices, together with external engines, each run in its
+own interpreter: interior-point
+and first-order generic solvers \citep{Goulart2024Clarabel,Schwan2023PIQP,Stellato2020OSQP,ODonoghue2016Conic,Domahidi2013ECOS,HiGHS2026Solvers,Applegate2021Practical},
+and structure-specific solvers that are offered only after a detector has
+recognized their structure in the instance under permutation: coordinate
+descent for lasso and group lasso \citep{Massias2018Celer,Bertrand2022Beyond,Pedregosa2011Scikit},
+network simplex and minimum-cost flow for network linear programs
+\citep{Bonneel2011Displacement,Flamary2021POT}, and a Frank--Wolfe core-set
+method for the minimum enclosing ball \citep{Yildirim2008Two,LacosteJulien2015Global}.
+A candidate without evidence is explored, and its run is charged to the budget;
+exploration stops once it has cost twice the time to the first verified answer,
+and the verified incumbent is never discarded. Every answer, whichever engine
+produced it, is accepted only if it passes the same check on the original
+problem. An LLM agent drives the system through four actions: solve an
+instance, evolve an operator against a specification, propose a planner rule,
+and propose a cost-model term, each admitted only after measurement on held-out
+instances.
+
+
+\subsection{Evolutionary loop}
+
+Search proceeds over generations with elitism. Two proposal engines operate
+on the identical genome space at identical evaluation budgets: (i) an
+LLM backend that receives the current archive (best genomes with their
+metrics), the mutation menu, and the genome JSON schema, and replies with a
+patched genome; invalid JSON or a Stage-0 rejection triggers one retry
+with the error injected, then a fallback to the random proposer; proposals
+are deterministically seeded and the archive deduplicates by content hash;
+and (ii) a random-search control that rejection-samples the valid
+region with log-uniform stepsizes. Fitness is the negated shifted geometric
+mean (SGM-10) of wall-clock time-to-certificate over the training instances;
+runs that fail to reach the certificate within the iteration budget score
+$-\infty$. The loop monitors for degenerate (flat) fitness landscapes and
+reports them rather than proceeding silently. Final comparisons are made
+exclusively on held-out instances never seen during search. The backend
+interface is engine-agnostic by construction, so the evolutionary machinery
+itself (island scheduling, parent sampling) can be swapped without touching
+the gate, compiler, or certificates \citep{Liu2026SkyDiscover}.
+
+
+\subsection{Implementation}
+
+Solvers are compiled with JAX. The total-variation search of
+Section~\ref{sec:exp:evolve} runs at float64 on the CPU of a single
+workstation, with Qwen2.5-Coder-1.5B-Instruct served by vLLM on its RTX~4090 as
+the mutation model. Operator synthesis uses Qwen3.8-27B in FP8 served by vLLM
+on an H100. Solves are timed on an RTX~4090 workstation and on an H100 80\,GB
+node; baselines and specialists run on the CPU of the machine being measured,
+in separate interpreters that never share an environment with our solver.
+

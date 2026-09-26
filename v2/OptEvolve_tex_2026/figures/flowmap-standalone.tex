@@ -1,0 +1,10 @@
+%% Render the detailed TikZ diagram to the PDF included by submission.tex.
+%% Build from figures/: tectonic flowmap-standalone.tex
+%% Then copy flowmap-standalone.pdf to flowmap.pdf for the paper.
+\documentclass[border=3pt]{standalone}
+\usepackage[T1]{fontenc}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,positioning}
+\begin{document}
+\input{flowmap}
+\end{document}

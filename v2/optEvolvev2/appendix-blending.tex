@@ -1,0 +1,22 @@
+\section{Averaged blending}
+\label{app:blending}
+
+The extended genome can represent
+$\mathrm{avg}(\lambda;T_1,T_2)=\lambda T_1+(1-\lambda)T_2$.
+For averaged maps in a common metric with a nonempty common fixed-point set,
+Lemma~\ref{lem:blend} gives the blended certificate
+\citep{RyuYin2022LargeScale,CombettesYamada2015Compositions}.
+The current gate admits restricted cases: compatible FBS parents can use
+different steps, DRS/Davis--Yin parents must preserve the auxiliary fixed-point
+encoding through identical steps, and saddle parents require identical
+$(\tau,\sigma)$ so their metric and saddle encoding agree. The common
+fixed-point condition remains a semantic mathematical obligation; the checker
+is not a general decision procedure for that property.
+
+Blending lies outside the grammar of Theorem~\ref{thm:soundness} and is not
+used in the hardware factorial. In the standard LP saddle instantiation,
+PDHG and Condat--V\~u with identical parameters are the same map, so blending
+those parents adds no mathematical variation. The expression contains two
+parent evaluations, but actual execution cost depends on compiler elimination
+and fusion and must be measured. We make no empirical discovery claim for this
+extension in the current evaluation.

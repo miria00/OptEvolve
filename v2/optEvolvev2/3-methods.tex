@@ -1,0 +1,138 @@
+\section{Methods}
+\label{sec:methods}
+
+\subsection{Canonical problem class}
+
+The compiler accepts supported instances of
+\begin{equation}
+  \min_x\; f(x)+g(x)+h(Lx),
+  \label{eq:composite}
+\end{equation}
+with convex $L_f$-smooth $f$, proximable $g,h$, and a linear map with a
+computable adjoint and a supplied upper bound $\ell\geq\|L\|$.
+Each scheme has additional decomposition requirements, listed in
+Appendix~\ref{app:instantiation}; the compiler rejects unsupported pairs.
+For anisotropic TV denoising, $f(x)=\tfrac12\|x-y\|^2$, $g=0$,
+$h(v)=\lambda\|v\|_1$, and $L=D$ is a forward-difference gradient with
+Neumann boundaries and $\|D\|^2\leq8$. Standard-form LP is represented as
+a linear objective, a nonnegative-orthant indicator and an equality constraint.
+
+\subsection{Typed executable recipes}
+\label{sec:genome}
+
+A genome records the base scheme, stepsizes, relaxation and supported
+wrappers, optional problem rescaling, and execution policy. Implemented base
+schemes are FBS, DRS, Davis--Yin, PDHG and Condat--V\~u
+\citep{RyuYin2022LargeScale,DavisYin2017Three}. Canonical serialization and
+content hashes identify duplicate representations; distinct representations
+can still encode the same mathematical iteration. In particular, the standard
+LP PDHG and Condat--V\~u updates coincide, whereas their TV instantiations use
+respectively a fidelity proximal step and a fidelity gradient step.
+
+The mathematical theorem in Section~\ref{sec:theory} covers the base and
+relaxation grammar. General derivation-tree search and the five transformation
+moves of the broader project plan are not implemented contributions of this
+evaluation. The benchmark cell declares a problem distribution, target device,
+tolerance, candidate space and evaluation budget. All comparisons must share
+those declarations.
+
+\subsection{Supported extensions}
+\label{sec:mixing}
+
+Halpern anchoring uses a nonexpansive map derived from a certified base;
+fixed-period anchor resets are implemented separately. The unrestarted Halpern
+theorem must not be applied automatically to a restarted trajectory. Neither
+wrapper is used in the current hardware factorial catalogs.
+
+A finite-prefix $\mathrm{switch}_K$ extension executes a structurally supported
+aggressive map for $K$ steps and then permanently switches to a certified tail:
+\begin{equation}
+ z_{k+1}=\begin{cases}T_Az_k,&k<K,\\T_Bz_k,&k\geq K.\end{cases}
+ \label{eq:switchk}
+\end{equation}
+In exact arithmetic, a finite handoff state gives the tail's usual guarantee
+from that state (Appendix~\ref{app:theory}). The implementation restricts the
+state space and supported maps and falls back to the last finite state if
+necessary. It does not accept arbitrary LLM-written numerical code.
+Blending is discussed in Appendix~\ref{app:blending}; the implemented admission
+rule uses restricted compatible parent schemes, metrics and fixed-point
+encodings. These extensions are outside the main grammar theorem and are not
+used in the hardware diagnostic reported here.
+
+\subsection{Construction gate and numerical checks}
+\label{sec:gate}
+
+Before execution, the checker verifies the scheme's applicability and sufficient
+stepsize conditions, including $\tau\sigma\ell^2<1$ for PDHG and
+$\tau L_f/2+\tau\sigma\ell^2<1$ for Condat--V\~u. Relaxation of a
+$\theta$-averaged map additionally requires $\rho\theta<1$. A failed
+condition rejects the proposed recipe; it is not evidence that the underlying
+algorithm necessarily diverges. The construction record includes the condition,
+constants and relevant mathematical rule.
+
+The exact-arithmetic construction guarantee and numerical stopping test have
+different roles. For TV, clipping $u$ to $\|u\|_\infty\leq\lambda$ gives
+dual value $\langle y,D^\top u\rangle-\tfrac12\|D^\top u\|^2$.
+The relative gap divides primal minus dual value by one plus the absolute
+primal value. For LP, the stopping statistic combines normalized primal
+feasibility, dual feasibility and primal--dual objective difference in the
+original coordinates. These quantities are computed in float64 using the
+original data, including after metric rescaling or low-precision iteration.
+Returned solutions are independently checked using NumPy/SciPy in the hardware
+campaign. These are numerical checks: float64 alone does not establish a
+rigorous floating-point error enclosure or convergence of inexact iterations.
+
+\subsection{Hardware-aware execution}
+\label{sec:hardware}
+
+The execution policy selects float64 iteration, float32 iteration with float64
+checking, or a finite float32 phase followed by float64 refinement. A schedule
+switches when the checked statistic reaches a declared intermediate threshold.
+The cadence $K$ controls the interval between numerical checks. The runner
+respects the exact iteration limit and checks the final state even when the
+remaining iteration count is smaller than $K$. Delayed checks can miss an early
+threshold crossing and change the solve fraction under a finite cap.
+
+The native LP backend emits thread-per-row and warp-per-row FP64 CSR update
+specializations. A mathematical recipe must pass construction admission before
+these kernels are admitted through reference comparisons. The primal and dual
+updates remain dependent launches. XLA is retained as an eligible implementation.
+This is bounded template generation, not arbitrary CUDA program synthesis.
+The separate batched runner is not exercised by the single-instance diagnostic.
+Reference tests follow the executable-demonstration motivation of
+\citet{Hawkeye2026}, with no claim that tests prove compiler correctness.
+
+Hardware context can contain a device identifier or measured operator costs,
+problem shape and sparse-matrix statistics. A controlled proposer comparison
+must vary this context while holding the model and candidate space fixed.
+Supplying context does not itself demonstrate useful specialization.
+
+\subsection{Search and evaluation}
+\label{sec:loop}
+
+The v2 population loop supports typed random mutations and LLM-proposed
+structured genomes. Parsing failures and rejected proposals can trigger retries
+and a typed fallback. Proposer, fallback and independent-control RNG streams
+are separated. Campaigns record fresh evaluations, duplicates, gate rejections,
+model calls and fallbacks; a comparison in fresh evaluations is distinct from
+one in elapsed search cost. The older coupled-stream comparison is excluded
+from claims about LLM efficiency.
+
+The current hardware factorial measures a finite catalog exhaustively. It
+selects recipes using training solve count followed by a declared penalized
+shifted geometric mean of execution time. Validation is excluded from selection.
+Algorithm-only, implementation-only, both sequential orders and joint selection
+are computed from this catalog. This is an interaction diagnostic, not an
+equal-budget evolutionary search comparison. Search efficiency requires separate
+runs with matched total budgets and the same available information.
+
+\subsection{Timing and implementation}
+
+JAX implements the reference iterations; CUDA kernels are integrated through
+FFI. Timed solves are synchronized, include numerical termination checks, and
+follow a complete warmup solve. Preparation, cold-call cost and external
+verification time are distinguished from warm execution. All results state the
+iteration cap, tolerance, non-solve penalty, input split, source hashes, device
+and compiler version. The diagnostic iteration cap is not described as a
+wall-time deadline. Search and preparation costs must be amortized over a stated
+number of future solves when making a deployment-efficiency claim.

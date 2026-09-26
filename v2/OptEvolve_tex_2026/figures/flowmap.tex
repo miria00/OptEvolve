@@ -1,0 +1,130 @@
+%% Detailed OptEvolve loop (TikZ picture only).
+%% Compile through flowmap-standalone.tex to the PDF included by the paper.
+%% Coordinate map, in cm: input y=12.5; genome x=0.2..7.4;
+%% gate/compile/measure/route x=8.54..15.76 (a 1.14-cm arrow channel).
+%% The colored stages on the right have 0.45-cm vertical gaps; the input
+%% has the same gap to the blue genome and amber gate. The blue bands share
+%% x=0.52..7.08 (0.32-cm side margins) and have 0.42-cm vertical gaps.
+%% Gene pool top y=2.89 gives ~0.5 cm clearance below both columns.
+%% This is Figure 1's palette and visual grammar, expanded to eight layers.
+\begingroup%
+\definecolor{oeInput}{HTML}{E7E0F1}% supplied problem
+\definecolor{oeGenome}{HTML}{DCE6F7}% typed solver design and compilation
+\definecolor{oeGate}{HTML}{F4DFA5}% pre-execution check
+\definecolor{oeOutput}{HTML}{E3EFD7}% measurement and routing
+\definecolor{oePool}{HTML}{E5E9EA}% retained evidence
+\definecolor{oeInk}{HTML}{293846}% outlines and flow
+\definecolor{oePrice}{HTML}{B3242B}% measured-cost feedback only
+\begin{tikzpicture}[
+ x=1cm,y=1cm,font=\sffamily,line cap=round,line join=round,
+ panel/.style={draw=oeInk,line width=.8pt,rounded corners=2.3mm,
+               align=center,inner sep=1.5mm},
+ band/.style={draw=oeInk!65,line width=.6pt,rounded corners=1.2mm,
+              fill=white,inner sep=1mm},
+ heading/.style={font=\sffamily\fontsize{9.5}{11}\bfseries\selectfont},
+ group/.style={font=\sffamily\fontsize{8.5}{10}\bfseries\selectfont,
+               anchor=west},
+ row/.style={font=\sffamily\fontsize{8.2}{9.7}\selectfont,anchor=west},
+ copy/.style={font=\sffamily\fontsize{8.2}{10}\selectfont,align=center},
+ flow/.style={-{Latex[length=2.3mm]},draw=oeInk,line width=.95pt},
+ evidence/.style={-{Latex[length=2.3mm]},draw=oeInk!72,line width=.85pt,
+                   dash pattern=on 2mm off 1.1mm},
+ price/.style={-{Latex[length=2.4mm]},draw=oePrice,line width=1pt}
+]
+%% Inputs banner: the family is the unit searched; the device informs the price.
+\node[panel,fill=oeInput,minimum width=16.1cm,minimum height=1.0cm]
+  (input) at (8.20,12.50) {};
+\node[heading] at (8.20,12.72) {Problem family + structure};
+\node[copy] at (8.20,12.29)
+  {instances at different scales \quad $\cdot$ \quad target accuracy \quad $\cdot$ \quad CPU / GPU profile};
+
+%% Genome container: three bands share the same width and eight numbered rows.
+\node[panel,fill=oeGenome,minimum width=7.20cm,minimum height=8.15cm]
+  (genome) at (3.80,7.47) {};
+\node[heading] at (3.80,11.10) {Typed genome: change one layer at a time};
+
+%% Form band: choose the algorithm family and how a problem family is traversed.
+%% All bands use the same width and left text inset, so their edges line up.
+\node[band,minimum width=6.56cm,minimum height=1.36cm]
+  at (3.80,9.92) {};
+\node[group] at (.78,10.26) {FORM};
+\node[row] at (.78,9.90) {1\; Family: splitting / path / working set};
+\node[row] at (.78,9.53) {2\; Continuation: grid / interpolation};
+
+%% Algorithm band: state reuse, safe restriction, handoff and numerics.
+\node[band,minimum width=6.56cm,minimum height=2.60cm]
+  at (3.80,7.52) {};
+\node[group] at (.78,8.58) {ALGORITHM};
+\node[row] at (.78,8.21) {3\; State: warm start / factorization update};
+\node[row] at (.78,7.77) {4\; Restrict: screen + re-admit};
+\node[row] (handoff) at (.78,7.33) {5\; Handoff: when to switch algorithms};
+\node[row] at (.78,6.89) {6\; Numerics: precision / fast math};
+
+%% Hardware band: admission and parallel width change per-step cost.
+\node[band,minimum width=6.56cm,minimum height=1.42cm]
+  at (3.80,5.09) {};
+\node[group] at (.78,5.46) {HARDWARE};
+\node[row] at (.78,5.09) {7\; Admission: work versus startup cost};
+\node[row] at (.78,4.70) {8\; Width: GPU tile / CPU threads};
+
+%% Stage-0 gate: family-specific obligations; the proof in this paper
+%% formally covers the splitting schemes and relaxation rules.
+\node[panel,fill=oeGate,minimum width=7.22cm,minimum height=2.10cm]
+  (gate) at (12.15,10.49) {};
+\node[heading] at (12.15,11.12) {Stage-0: check before compiling};
+\node[copy,text width=6.55cm] at (12.15,10.28)
+  {Splitting: convergence conditions\\
+   Exact path: face + step \quad $\cdot$ \quad Working set: full KKT pass};
+
+%% Execution remains blue: compilation/fusion instantiates the genome's
+%% device gene after admission; it is not another correctness gate.
+\node[panel,fill=oeGenome,minimum width=7.22cm,minimum height=1.55cm]
+  (compile) at (12.15,8.215) {};
+\node[heading] at (12.15,8.515) {Compile + fuse};
+\node[copy] at (12.15,7.965) {choose a GPU tile or CPU thread width};
+
+%% Evaluation is green like the routed output: both belong to Figure 1's
+%% Measure and route stage. The red line explains the return to layer 5.
+\node[panel,fill=oeOutput,minimum width=7.22cm,minimum height=1.75cm]
+  (measure) at (12.15,6.115) {};
+\node[heading] at (12.15,6.48) {Measure to acceptance};
+\node[copy] at (12.15,6.05)
+  {$T=\mathrm{setup}+N\,t$ across shapes and devices};
+\node[copy,text=oePrice] at (12.15,5.60)
+  {measured $t$ re-prices the layer-5 handoff};
+
+%% Result: the fastest accepted route can be an existing specialist.
+\node[panel,fill=oeOutput,minimum width=7.22cm,minimum height=1.45cm]
+  (route) at (12.15,4.065) {};
+\node[heading] at (12.15,4.355) {Solver + routing rule};
+\node[copy] at (12.15,3.805) {evolved or specialist; checked answer};
+
+%% Evidence pool: success and failure both affect later proposals. The
+%% dashed line goes around the left margin to avoid crossing the genome.
+\node[panel,fill=oePool,minimum width=16.1cm,minimum height=1.08cm]
+  (pool) at (8.20,2.35) {};
+\node[heading] at (8.20,2.57) {Gene pool: measured moves, positive and negative};
+\node[copy] at (8.20,2.10)
+  {Keep the evidence and its code dependency; invalidate it when the code changes.};
+
+%% Main path: input -> genome -> gate -> compilation -> measurement -> route.
+\draw[flow] (3.80,12.0) -- (genome.north);
+\draw[flow] (genome.east |- gate.center) -- (gate.west);
+\draw[flow] (gate.south) -- (compile.north);
+\draw[flow] (compile.south) -- (measure.north);
+\draw[flow] (measure.south) -- (route.north);
+
+%% Dashed return: measurements update the gene pool, which proposes one
+%% typed change to the next genome. Keep this separate from the red price arc.
+\draw[evidence] (measure.east) -- (16.55,6.115) --
+  (16.55,2.35) -- (pool.east);
+\draw[evidence] (pool.west) -- (-.32,2.35) --
+  (-.32,6.14) -- (.20,6.14);
+
+%% Red return: the per-step cost t(op,device), measured at the right,
+%% moves the crossover in the layer-5 handoff. Terminate on the actual
+%% handoff row, not the outer panel, so the dependency is unambiguous.
+\draw[price] (measure.west) -- (7.78,6.115) --
+  (7.78,7.33) -- (handoff.east);
+\end{tikzpicture}%
+\endgroup%

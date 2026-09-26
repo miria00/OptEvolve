@@ -1,0 +1,181 @@
+
+
+
+
+\documentclass{article}
+
+\usepackage{iclr2027/iclr2027_conference,times}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}
+\usepackage{amsthm}
+\usepackage{placeins}
+% Upright (non-italic) body for all theorem-like environments, per style rule.
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\newcommand{\nnote}[1]{\textcolor{green}{\textbf{[Note:]}}}
+\newcommand{\mnote}[1]{\textcolor{blue}{\textbf{[Note:]}}}
+\newcommand{\iclrTODO}[1]{%
+  \par\noindent\fcolorbox{red}{yellow!15}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+      \centering\color{red}\Large\bfseries ICLR TODO: #1}}\par}
+\newcommand{\deprecated}[1]{\textcolor{red}{\textbf{[DEPRECATED FOR ICLR: #1]}}}
+
+\title{OptEvolve: Hardware-Aware Search for Certified Optimization Solvers}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Miria Feng\thanks{Use footnote for providing further information
+    about author (webpage, alternative address), not for acknowledging
+    funding agencies.} \\
+  Department of Electrical Engineering\\
+  Stanford University\\
+  Stanford, CA 94305 \\
+  \texttt{miria00@stanford.edu} \\
+  \And
+  Nikhil Devanathan \\
+  Department of Electrical Engineering \\
+  Stanford University \\
+  Stanford, CA 94305 \\
+  \texttt{ndev@stanford.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+% Keep this commented for an anonymous submission. Uncomment only for the
+% camera-ready version after acceptance.
+%\iclrfinalcopy
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+OptEvolve searches hardware-aware executable recipes for convex optimization:
+a mathematical splitting, its parameters, and the precision, kernel and
+certificate-checking schedule used to execute it. A construction gate checks
+sufficient convergence conditions before execution, while a separate numerical
+check evaluates returned solutions in the original problem coordinates.
+In a development catalog of 36 total-variation solver recipes, execution-policy
+selection reduces warm-time scores by factors of $1.47$ and $1.57$ on an
+RTX 4090 and RTX 5090, respectively, relative to a compiled float64 baseline
+checking every 64 iterations. All six validation OCT images reach $10^{-4}$.
+Both GPUs select float32-to-float64 refinement with a longer check interval,
+while CPU selection retains the baseline. Joint selection matches
+implementation-first sequential selection on both GPUs. At $10^{-6}$, the
+selected recipes solve five of six images under the iteration cap; pure
+float32 iterations can fail despite float64 checking. A separate LP
+diagnostic finds that the tested generated CUDA kernels are slower than XLA
+despite fewer launches. These scoped findings motivate hardware-aware
+evaluation but do not establish a joint-search or LLM-guidance advantage.
+Mathematical guarantees assume exact arithmetic and correct atoms; numerical
+tests are not formal floating-point proofs.
+\end{abstract}
+
+
+
+
+\input{1-introduction}
+\input{2-related-work}
+\input{3-methods}
+\input{4-theory}
+\input{5-experiments}
+
+
+
+
+\input{6-conclusion}
+
+\section*{Reproducibility Statement}
+The compiler instantiations and reference comparisons are described in
+Appendix~\ref{app:instantiation}. Hardware campaign artifacts record serialized
+genomes, source and input hashes, selection partitions, compiler/device
+versions, cold and warm timings, individual numerical checks and non-solves.
+The current evaluation is diagnostic; the frozen final benchmark is not yet
+reported. The supplementary package remains to be assembled for submission.
+
+\section*{Ethics Statement}
+The imaging experiments solve a convex denoising objective on an existing OCT
+dataset. Optimization accuracy does not establish preservation of pathology
+or suitability for clinical decisions. We report no clinical efficacy result.
+Dataset attribution and applicable redistribution terms must accompany the
+submission artifact; the code should load data through its documented source.
+
+\section*{AI Use Statement}
+Language models are part of the proposal method and have also assisted the
+research workflow, including literature discovery, experiment planning, code
+implementation, debugging, manuscript drafting and interpretation of results.
+The local proposal pilot uses Qwen2.5-Coder-1.5B-Instruct. Coding assistants,
+including Claude and Codex, contributed to implementation and writing.
+The authors are responsible for verifying the mathematics, citations, code
+and reported measurements. A complete model/version and usage inventory will
+accompany the final submission disclosure.
+
+\bibliographystyle{iclr2027/iclr2027_conference}
+\bibliography{refs}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+
+\input{appendix-theory}
+
+\input{appendix-blending}
+
+\input{appendix-instantiation}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newpage
+% The NeurIPS paper checklist is venue-specific and is intentionally excluded
+% from the ICLR submission:
+% \deprecated{NeurIPS paper checklist}
+% \input{checklist.tex}
+
+
+\end{document}

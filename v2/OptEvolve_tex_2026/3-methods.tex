@@ -1,0 +1,109 @@
+\section{Methods}
+\label{sec:methods}
+
+Figure~\ref{fig:framework} shows how candidate generation, mathematical and
+numerical checks, measured costs, and routing interact. The checks have
+different scopes: a scheme certificate concerns an exact iteration; a
+projection contract screens generated code; the final check accepts a point
+on the original problem.
+
+\begin{figure}[H]
+\centering
+\resizebox{\linewidth}{!}{\input{figures/framework}}
+\caption{OptEvolve searches typed solver designs for a problem family. The
+scheme gate checks convergence conditions before evaluation; generated
+projections pass separate contract tests. Measured device costs and outcomes
+feed back into search, while accepted solves determine the route.}
+\label{fig:framework}
+\end{figure}
+
+\subsection{Canonical problem class}
+A family supplies matrix-vector and adjoint operators, block metadata, training instances, a target instance and accuracy, and available devices. OptEvolve retains reusable candidates and costs; on the target it returns a route and a point that passes the original-problem check (Section~\ref{sec:exp:protocol}), or reports no answer within budget. Its composite convex model is
+\begin{equation}
+\min_x f(x)+g(x)+h(Lx),\label{eq:composite}
+\end{equation}
+where $f$ has a Lipschitz gradient, $g,h$ have computable proximal steps, and 
+$L$ is a bounded linear operator with computable adjoint $L^\ast$ and a known norm bound $\ell \ge \|L\|$.
+%$L$ has an adjoint and a valid norm bound.
+A proximal step minimizes $g(u)+\|u-v\|^2/(2\gamma)$; for a constraint indicator it projects onto the feasible set. An iteration operator $T$ maps the current (possibly primal--dual) state to the next. Splitting constructs $T$ from updates for the separate terms \citep{RyuYin2022LargeScale}.
+
+\subsection{Solvers as typed genomes}
+\label{sec:genome}
+A genome specifies a base scheme (forward--backward, Douglas--Rachford, Davis--Yin, primal--dual hybrid gradient, or Condat--V\~u), stepsizes, and optional relaxation \citep{ChambollePock2011First,Condat2013Primal,Vu2013Splitting}. Associated genes select a solution-preserving formulation, projection implementation, and backend. Canonical serialization deduplicates proposals; typed mutations cannot silently change the mathematical meaning of a field. The certified grammar is defined in Section~\ref{sec:theory}.
+
+\subsection{Certified method mixing}
+\label{sec:mixing}
+The gate certifies base schemes and relaxation, not arbitrary blends, adaptive policies, or free-form switching. Conditional blend and safeguarded-step rules appear in Appendix~\ref{app:theory}; they are not used in the reported experiments.
+
+\subsection{The Stage-0 type-check gate}
+\label{sec:gate}
+Before executing a scheme, the gate checks its stepsize, operator-norm, and relaxation inequalities (Table~\ref{tab:certificates}) and records the resulting exact-iteration construction certificate. Invalid proposals return the violated condition to the proposer rather than being silently clamped. The gate assumes an admissible formulation and exact proximal maps; it is not a proof of floating-point code.
+
+\subsection{Compilation and certificates}
+An admitted exact scheme is compiled as a JAX iteration. The construction certificate establishes convergence under Section~\ref{sec:theory}'s assumptions. Runtime residuals and, where available, duality gaps monitor the solve; the reported point must independently pass the original-problem acceptance check. Synthesized numerical projections are run first inside a contract harness, not admitted by the symbolic scheme gate. Appendix~\ref{app:methods} details these distinct checks.
+
+\subsection{Hardware-aware backend genes}
+\label{sec:hardware}
+The backend genes choose precision, batching, and per-device execution, including a temporally fused GPU tile or an unfused loop. Candidate kernels are checked against reference updates; the exact-operator certificate does not cover their floating-point behavior. Calibration prices each tile on its target device rather than transferring a winner across GPUs (Appendix~\ref{app:methods}).
+
+\subsection{Formulation genes}
+\label{sec:formulation}
+Formulations can equilibrate rows or move recognized constraints from $h(Lx)$ into the projection in $g$, changing iteration count and cost without changing the underlying solution. Relocation requires a valid recovery map, a new bound for the transformed operator, and an exact mathematical projection; only then can the scheme certificate transfer (Proposition~\ref{prop:formulation-transfer}, Appendix~\ref{app:theory}).
+
+\subsection{Operator synthesis under contract}
+\label{sec:synthesis}
+When projection time limits a promising route, an LLM proposes a faster implementation for a specified set and device. Before a proposal is used in a solve, a contract harness checks it against a reference projection on tested inputs, including degeneracies. Passing finite tests does not prove equality to the exact projection for all inputs. Admitted implementations are timed on each device (Appendix~\ref{app:methods}).
+
+\subsection{The gene pool, the cost model, and routing}
+\label{sec:routing}
+An append-only gene pool stores accepted designs, measurements, and rejection feedback. The router estimates $T=\mathrm{setup}+N(\mathrm{formulation})\,t(\mathrm{operator},\mathrm{device})$, using measured iteration counts and calibrated per-device costs, not an operator-norm proxy. It considers evolved candidates and recognized generic or structure-specific engines; unmeasured choices are explored within budget. Every returned answer passes the same original-problem check, regardless of route.
+
+\subsection{Evolutionary loop}
+\label{sec:loop}
+The LLM proposer receives archived results, a mutation menu, and the genome schema; a random proposer controls for typed-space search at the same evaluation budget. Candidates are admitted before timing, scored by training time to an accepted answer, and selected on held-out instances. Algorithm~\ref{alg:optevolve} ties the search and target routing together; Appendix~\ref{app:methods} gives proposal and fitness details.
+
+\paragraph{Proposal policy and adversarial selection.} Which proposer to ask is
+itself a choice, and it can be learned without touching the model. A disjoint
+LinUCB contextual bandit \citep{li2010linucb} arbitrates the proposal channel,
+deciding at each step whether to query the model for a complete typed design,
+mutate one legal gene of the incumbent, or sample a fresh legal design from the
+same typed space. It is updated from the executed outcome of each candidate and
+leaves the proposer weights frozen, so it changes where the evaluation budget is
+spent rather than what the model knows. Selection can also be made adversarial.
+The manually authored reference program is frozen as the opening opponent with
+its source withheld from the proposer, and a challenger is promoted only if it
+certifies every case and then wins a paired contest against the current
+champion, the original anchor, and a rotating earlier opponent, under randomized
+contest order, with a bootstrap lower bound above $1.05\times$ and no case
+regressing by more than $20\%$; the promoted champion becomes the next opponent
+and the next parent. On the unmixing class at a fixed budget of eight fresh
+evaluations, the bandit channel reached its first certified assembly on the
+fourth candidate using two model calls, against the sixth candidate and six
+model calls for the frozen loop, so what it buys is queries and evaluations
+rather than a better solver. Appendix~\ref{app:llm-loop} reports the
+fixed-budget controls, the incomplete arms, and the seeds in which uniform
+random search also recovers the method.
+
+\begin{algorithm}[H]
+\caption{OptEvolve: search, certify, measure, and route.}
+\label{alg:optevolve}
+\small
+\begin{algorithmic}[1]
+\Require Problem family, training and target instances, accuracy, devices
+\Ensure Reusable gene pool; accepted point and route, or no answer
+\While{evaluation budget remains}
+  \State Propose a typed scheme, formulation, operator, or backend edit.
+  \State Check the exact scheme and formulation; contract-test generated code.
+  \If{rejected} \State Record the reason for the next proposal.
+  \Else \State Compile, time accepted training solves, and update measured costs.
+  \EndIf
+\EndWhile
+\State Include recognized specialists; explore unmeasured routes within budget.
+\State \Return a route and an original-problem-accepted point, or no answer.
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Implementation}
+JAX compiles the admitted iterations. Search uses Qwen2.5-Coder-1.5B-Instruct for genome proposals and Qwen3.8-27B for projection synthesis; timing is on an RTX~4090 workstation and an H100 node, with CPU specialists run on the corresponding host. Machine, cache, and timing details appear in Appendix~\ref{app:methods} and Section~\ref{sec:exp:protocol}.
+
+\input{methodology}

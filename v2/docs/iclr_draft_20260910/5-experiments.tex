@@ -1,0 +1,1018 @@
+% Section 5. Experiments.
+% Every number carries a "% source:" comment naming a file under
+% /home/miria/OptEvolve/v2/results/. Nothing here comes from atlas/.
+% Style contract: no em-dash or en-dash characters, no triple-hyphen dash
+% macro, no italic markup of any kind, pure ASCII, plain declarative prose.
+% All figures below were recomputed from the raw JSON rows on 2026-09-10 by
+% opening the cited file and agree with it to the digits printed. Where a
+% recomputation disagreed with an earlier draft the earlier value was deleted,
+% not softened.
+
+\section{Experiments}
+\label{sec:results}
+\label{sec:exp}
+
+All measurements run on an RTX 4090 (sm\_89) and an RTX PRO 6000 Blackwell
+Max-Q (sm\_120), over four families: total variation denoising of six retinal
+OCT scans, min-cost flow on grid and regular topologies, capacitated
+multi-commodity flow, and optimal transport. Termination is decided by a
+float64 relative duality gap in original coordinates at $10^{-4}$ unless stated
+otherwise. Every time is wall clock to a certified gap and every iteration
+count is the count at which that certificate passed. Iteration count is written
+$N$ and per-iteration cost $t$, and we state which of the two any ratio is
+measured on, because the thesis of the paper is $T = N \times t$.
+
+\subsection{Problem families}
+\label{sec:families}
+
+% source: row and cell counts enumerated from every JSON under results/ carrying a
+% per-instance 'cell' or 'family' key, plus the tolerance-keyed factorials for TV.
+Table~\ref{tab:families} lists the five families on which every number in this
+paper was measured, with the volume of measurement behind each. The three
+linear-programming families share the same standard-form composite and are
+solved by the same code path, which is what makes the transfer experiment of
+Section~\ref{sec:exp:transfer} meaningful: the solver is held fixed and only the
+operator changes. Total variation is the one non-LP family and the only one to
+which the fused kernel of Section~\ref{sec:exp:fusion} applies, since that kernel is
+a stencil.
+
+\begin{table}[t]
+\caption{Problem families with measurements. Rows count individual solves
+recorded under \texttt{results/}. Cells count distinct problem configurations.}
+\label{tab:families}
+\begin{center}
+\begin{tabular}{llrr}
+\toprule
+Family & Configurations & Rows & Cells \\
+\midrule
+Min-cost flow, grid & $k \times k$ grid, bidirectional 4-neighbour arcs & 5{,}645 & 4 \\
+Min-cost flow, random regular & degrees 2, 3, 4; $n = 256, 512, 1024$ & 3{,}929 & 8 \\
+Optimal transport & bipartite, $m = n \in \{32, 64, 96\}$ & 1{,}431 & 3 \\
+Total-variation denoising & OCT scans, 128 to 1984 pixels & 1{,}003 & 7 sizes \\
+Multi-commodity flow & capacity-coupled, $K \in \{2, 4\}$ & 648 & 2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+The families are not variations on a single operator. Table~\ref{tab:opnorm}
+gives the behaviour of $\|L\|$, which is the quantity the construction gate of
+Section~\ref{sec:exp:method} tests and therefore the quantity that decides which
+recipes are admissible at all. Two families have an operator norm bounded
+independently of problem size, one grows without bound in the size, and one
+contracts in its coupling parameter. This spread is the reason the admissible
+region is family dependent rather than a property of the solver.
+
+\begin{table}[t]
+\caption{Operator-norm behaviour across the five families, measured. The
+reported $\|L\|$ is the gate's bound, which carries a $1.02$ safety factor over
+the spectral norm.}
+\label{tab:opnorm}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Family & $\|L\|$ behaviour & Measured \\
+\midrule
+% source: build_instances('grid', k) norm_bound; 528 to 9024 variables
+Min-cost flow, grid & saturates at $4$, bounded in size & $4.045$ to $4.076$ over a $17\times$ size increase \\
+% source: build_instances('regular', n, degree=d) norm_bound
+Min-cost flow, regular & bounded by degree, $\leq \sqrt{4d}$ & $2.884$ at $d=2$, $3.935$ at $d=4$ \\
+% source: atlas/bench/ot.py transport_composite norm_bound vs 1.02*sqrt(m+n)
+Optimal transport & $\sqrt{m+n}$, unbounded in size & exact to $3 \times 10^{-14}$ relative \\
+% source: atlas/bench/mcf.py mcf_composite norm_bound, grid size 8
+Multi-commodity flow & grows with $K$, admissible $\tau\sigma$ contracts & $\|L\|^2$ from $17.1$ at $K{=}1$ to $150.1$ at $K{=}128$ \\
+Total-variation denoising & gradient stencil, bounded & fixed by the discretisation \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+The consequence is direct. On grid instances the admissible region is
+effectively fixed: $\|L\|$ moves $0.76$ percent while the variable count grows
+$17\times$, so the same step sizes remain legal at every size. On optimal
+transport the admissible product $\tau\sigma$ must shrink as $1/(m+n)$, and both
+catalog step-size settings become inadmissible at sizes far below those we
+solve. On multi-commodity flow the admissible product falls from $0.0584$ at
+$K=1$ to $0.00666$ at $K=128$. A step-size pair is therefore not portable across
+families, and the gate detects this symbolically, before any iteration runs.
+
+\subsection{The factorisation}
+\label{sec:exp:factorisation}
+
+% source: results/tv_ffi_20260906/cadence_4090_v1/factorial.json
+% source: results/bw_20260909/sz256_bw/factorial.json
+Table~\ref{tab:Nvectors} gives the per-instance iteration counts on TV at
+$n=256$. The six-element vectors, not only their means, are identical element by
+element on the two architectures at every cadence and under both schemes.
+
+\begin{table}[t]
+\centering
+\caption{Per-instance iteration counts over the six OCT scans at $n=256$,
+tolerance $10^{-4}$. Every vector is identical on the RTX 4090 and on the
+Blackwell. The vectors are also identical across the float64, float32-iterate
+and two-phase precision policies at $K=64$ and $K=256$. At $K=16$ they are not:
+the float32-iterate policy moves PDHG from the float64 vector
+$[1008, 496, 608, 400, 320, 640]$, mean $578.7$, to
+$[1008, 512, 608, 416, 320, 640]$, mean $584.0$, while Condat-Vu is unchanged
+at $584.0$.}
+\label{tab:Nvectors}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Cadence & Scheme & Per-instance $N$ & Mean \\
+\midrule
+$K=16$  & Condat-Vu & 1008, 512, 608, 416, 320, 640 & 584.0 \\
+$K=16$  & PDHG      & 1008, 496, 608, 400, 320, 640 & 578.7 \\
+$K=64$  & both      & 1024, 512, 640, 448, 320, 640 & 597.3 \\
+$K=256$ & both      & 1024, 512, 768, 512, 512, 768 & 682.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% source: results/tv_ffi_20260906/{cadence_4090_v1,f32row_4090,f64host_4090,kernelhost_4090}/factorial.json
+% source: results/bw_20260909/{sz128_bw,sz496_bw}/factorial.json
+% The width counterexamples are the reason this paragraph is scoped. They were
+% recomputed from the two bw_20260909 files and from f32row_4090 named above.
+The same vectors appear in four separate factorial artifacts covering the
+float64 device loop, the float32-iterate float64-certificate device loop, the
+host-phase policy and the hand written kernel in both execution structures. At
+$n=256$ and $K \geq 64$ iteration count is invariant to arithmetic width,
+execution structure, kernel and device, and is a function
+of cadence and tolerance alone. Width is not inert in general. On the Blackwell
+at $K=64$ float64 gives $576.0$ against float32's $586.7$ at $n=128$ and
+$1066.7$ against $1077.3$ at $n=496$, and on the 4090 at $K=16$ float32 moves
+PDHG from $578.7$ to $584.0$. Cadence quantises the width difference away at
+$K \geq 64$ and $n=256$ and not everywhere.
+
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz{128,256,384,496}.json
+% source: results/kernel_fusion_20260909/e2e_bw/full_bw_sz{128,256,384,496}.json
+% Within-cell iteration identity and the 6-of-6 certification were rechecked
+% arm by arm; the largest within-cell time spread over the eight cells is 2.6294.
+The invariance survives into the deployed solver. Across eight arms, the traced
+baseline, the static loop and six fusion tiles, at four sizes on both devices,
+the per-instance vectors are identical within each cell and every arm certifies
+6 of 6, while solve time within a cell varies by up to $2.629\times$. The sweep
+requested seven tiles, $8\times4$, $16\times2$, $16\times4$, $24\times4$,
+$32\times2$, $32\times3$ and $32\times4$. The $32\times3$ tile never runs,
+because the harness requires the fused depth $T$ to divide the cadence $K$ and
+no recorded cadence, $64$, $128$, $256$ or $512$, is divisible by 3. Six tiles
+are measured everywhere in this paper.
+
+% source: results/netflow_20260909/grid_4090.json
+% 48 rows: 24 banked (all executed) and 24 balanced (all gate-rejected).
+% The two rows at grid size 12, instance 1, hit the 20000 cap at gap 2.858e-4.
+The second family agrees. All 24 banked min-cost flow rows return exactly equal
+iteration counts under the static and the traced loop, and 22 of the 24
+certify; the two rows at grid size 12, instance 1, agree only because both hit
+the 20000-iteration cap at a gap of $2.858 \times 10^{-4}$. Over the 22
+certified rows the traced-over-static wall-time ratio has geometric mean
+$1.395$ and spans $1.293$ to $1.492$; over all 24, including the two capped
+rows, it is $1.385$ and spans $1.277$ to $1.492$. All 12 matched instance pairs
+return exactly equal counts under PDHG and Condat-Vu, of which 11 are certified
+pairs and one is the pair that both schemes ran to the cap.
+
+% source: results/method_axis_20260909/factorial.json (XLA half)
+% source: results/tv_ffi_20260906/kernelhost_4090/factorial.json (kernel half)
+% Both halves recomputed as solver_s / iters, averaged over the six images.
+Per-iteration cost is invariant to scheme identity under XLA and is not under
+the hand written kernel. At \texttt{f64\_K256} under XLA the two schemes return
+the identical vector $[1024, 512, 768, 512, 512, 768]$, penalised SGM-1 times in
+ratio $0.99494$ and per-iteration costs of $19.76$ against $19.76$
+microseconds. In the custom-kernel artifact, with the same
+\texttt{build\_digest} in both rows, Condat-Vu costs $19.21$ microseconds per
+iteration and PDHG $25.02$, a factor of $1.303$, and the gap appears in all
+four custom-kernel cells at $1.303$, $1.264$, $1.179$ and $1.197$. Scheme
+identity is inert to $t$ on the compiler path and not on the kernel path.
+
+% source: results/tv_ffi_20260906/cadence_4090_v1/factorial.json and
+% results/bw_20260909/sz256_bw/factorial.json and
+% results/method_axis_20260909/factorial.json
+% CORRECTION relative to results/tv_ffi_20260906/DECOMPOSITION_REPORT.md, which
+% states 584/597/683 for both schemes. That is true at K=64 and K=256 only.
+Scheme identity is exactly inert to $N$ at coarse cadence and not at fine
+cadence. At $K=16$ the schemes differ on two of the six instances, 512 against
+496 and 416 against 400, and the split reproduces on the Blackwell. At
+$10^{-6}$ and $K=64$ Condat-Vu averages $2860.0$ iterations and PDHG $2870.7$;
+both certify 5 of 6, both means include the same capped instance, and the two
+schemes differ on exactly one of the five certified instances, 2432 against
+2496. A coarse cadence quantises a real scheme difference away, which is the
+mechanism this paper argues for rather than an exception to it.
+
+\subsection{Execution structure}
+\label{sec:exp:execution}
+
+% source: results/artifacts_20260910/fanova.json, block
+% exec_x_prec_x_cadence__logT__tol0.0001, which carries all twelve cells to
+% full precision and names its four source factorials:
+%   device_loop|f64  -> tv_ffi_20260906/cadence_4090_v1/factorial.json
+%   device_loop|f32  -> tv_ffi_20260906/f32row_4090/factorial.json
+%   host_phases|f64  -> tv_ffi_20260906/f64host_4090/factorial.json
+%   host_phases|f32  -> tv_ffi_20260906/px999999_4090/factorial.json
+% The twelve values are 22.536573, 20.389612, 19.777049, 22.986976, 20.405764,
+% 19.775866, 27.184947, 16.185603, 13.290695, 27.998956, 12.228629, 8.431614.
+Table~\ref{tab:periter} decomposes per-iteration cost over execution structure,
+arithmetic width and cadence.
+
+\begin{table}[t]
+\centering
+\caption{Microseconds per iteration on the RTX 4090, TV at $n=256$, Condat-Vu,
+averaged over the six scans. PDHG in the same artifacts gives $27.40$, $17.20$
+and $14.15$ at host-phase float64 and $26.59$, $12.21$ and $8.36$ at host-phase
+float32. The host-phase float32 row is the patched policy registry and not the
+shipped genome, as disclosed at the end of this subsection.}
+\label{tab:periter}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Execution & Width & $K=16$ & $K=64$ & $K=256$ \\
+\midrule
+Device loop  & float64                & 22.54 & 20.39 & 19.78 \\
+Device loop  & float32 iterates       & 22.99 & 20.41 & 19.78 \\
+Host phases  & float64                & 27.18 & 16.19 & 13.29 \\
+Host phases  & float32 throughout     & 28.00 & 12.23 &  8.43 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Width buys $1.00\times$ inside the device loop at $K=256$, where the measured
+ratio is $1.00006$ and the section's own stability figure is $0.66$ percent, so
+the third decimal is below resolution. It buys $1.576\times$ once the loop is
+chunked into host phases, with the float32 host-phase cell taken from the
+patched policy registry rather than the shipped genome. Execution structure is
+worth $1.488\times$ at float64 and $2.345\times$ at float32 at $K=256$, and
+reverses to $0.829\times$ at $K=16$, where chunking pays more in launches than
+it saves. Under PDHG the float64 execution-structure gain at $K=256$ is
+$1.398\times$ rather than $1.488\times$. Reporting one of these without the
+other misattributes the gain.
+
+% source: results/artifacts_20260910/fanova.json, same block, percent_variance.
+% Response is log per-iteration cost; factors are execution, precision, cadence.
+% This is NOT the algorithm-by-precision-by-cadence decomposition on log
+% penalised SGM-1, whose algorithm share is 0.00 percent at 1e-4 and 0.34 at
+% 1e-6 and which is reported in the introduction and in Section 2
+% (2-related-work.tex lines 96 to 98). Do not merge the two decompositions.
+A three-way decomposition of log per-iteration cost over those twelve cells
+assigns $47.43$ percent of the variance to cadence, $25.96$ percent to the
+execution-by-cadence interaction, $15.98$ percent to execution structure,
+$3.26$ percent to execution by precision, $2.90$ percent to precision alone,
+$2.43$ percent to precision by cadence and $2.04$ percent to the three-way
+residual. The design is saturated at one observation per cell, so these are
+shares of an exact decomposition and carry no error bar.
+
+% source: results/finish_20260910/loop_mechanism.json, 48 rows, recomputed.
+% The 48 rows are 2 sizes x 6 trip counts x 2 traced x 2 certificate settings,
+% so the certificate term is a difference and there are 24 of them, not 48.
+Table~\ref{tab:loopmech} settles the cause. It holds the total iteration budget
+fixed at 512 and moves the number of outer trips from 32 down to 1, with the
+cadence moving inversely.
+
+\begin{table}[t]
+\centering
+\caption{Traced minus static cost, nanoseconds per iteration, certificate off.
+The product of outer trips and cadence is 512 in every column. One measurement
+per cell, no repeats.}
+\label{tab:loopmech}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Outer trips & 32 & 16 & 8 & 4 & 2 & 1 \\
+\midrule
+$n=128$ penalty & 11972 & 11365 & 10893 & 11014 & 10823 & 10769 \\
+$n=128$ ratio   & 2.374 & 2.348 & 2.299 & 2.361 & 2.333 & 2.317 \\
+$n=256$ penalty & 12943 & 12564 & 11604 & 11929 & 11202 & 11531 \\
+$n=256$ ratio   & 2.091 & 2.126 & 1.989 & 2.060 & 1.938 & 1.997 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The penalty is per iteration and nearly flat in the number of outer trips. It
+falls $10.0$ percent at $n=128$, from $11972$ to $10769$\,ns, and $10.9$ percent
+at $n=256$, from $12943$ to $11531$\,ns, while the outer count falls 32-fold,
+and the static per-iteration cost itself moves only $6.2$ percent at $n=128$,
+from $8714$ to $8175$\,ns, across the same 32-fold change in unroll depth. A
+lost cross-iteration fusion opportunity would not be 10 percent of a 32-fold
+change. The file carries one measurement per cell with no repeats, so any
+residual trend is at the resolution of a single shot. Over the 24 matched
+differences the certificate term, cost with the certificate on minus cost with
+it off, spans $-239.90$ to $+844.56$\,ns against a loop penalty near
+$11000$\,ns, so it is not a per-certificate-check cost either, which is the
+explanation we previously advanced. The largest certificate term, $+844.56$\,ns,
+falls at $n=128$ and 32 outer trips, the finest cadence in the file, where a
+real certificate cost would appear, and is 7 percent of the loop penalty there.
+
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz{128,256,384,496}.json
+% and e2e_bw/full_bw_sz{128,256,384,496}.json
+End to end the static bound alone is worth $1.673\times$, $1.347\times$,
+$1.291\times$ and $1.093\times$ at $n=128$, $256$, $384$ and $496$ on the 4090
+and $1.228\times$, $1.382\times$, $1.401\times$ and $1.243\times$ on the
+Blackwell. The 4090 benefit decays with size and the Blackwell benefit does
+not.
+
+% source: results/tv_ffi_20260906/kernelhost_4090/factorial.json
+% 19.2068 / 19.7628 / 13.2732 / 12.9007 under Condat-Vu;
+% 25.0212 / 19.7619 / 15.6475 / 13.7109 under PDHG.
+Under Condat-Vu the custom TV kernel is at parity with XLA on this device in
+both execution structures: $19.21$ against $19.76$ microseconds per iteration in
+the device loop at $K=256$, an edge of $1.029\times$, and $13.27$ against the
+schedule policy's $12.90$ in host phases, a loss of $0.972\times$. Under PDHG
+the same kernel loses in both, $25.02$ against $19.76$, a loss of
+$1.266\times$, and $15.65$ against $13.71$, a loss of $1.141\times$. The kernel
+gains $1.447\times$ from chunked execution while XLA in the same artifact gains
+$1.532\times$, so both gain from chunking, the gains are not equal, and
+execution structure and kernel identity remain separate decisions.
+
+% source: results/tv_ffi_20260906/px999999_4090/factorial.json (0.00576135) and
+% cadence_4090_v1/factorial.json (0.01215536 baseline, 0.00789548 catalog best).
+% 0.01215536 / 0.00576135 = 2.10981; 0.01215536 / 0.00789548 = 1.53953.
+% These two cells were produced by patching the policy registry, not by the
+% shipped genome. Label them as diagnostics, never as search output.
+The best configuration measured is not expressible in the shipped genome: XLA
+float32 with host phases at $K=256$ reaches $0.00576$\,s penalised SGM-1 against
+the compiled float64 and $K=64$ baseline's $0.01216$\,s, a speedup of
+$2.110\times$, where the best catalog cell reaches $0.00790$\,s and
+$1.540\times$. That cell was produced by patching the policy registry rather
+than by the shipped genome, so it is a diagnostic that motivates a schema
+change and not a search result.
+
+\subsection{Temporal kernel fusion}
+\label{sec:exp:fusion}
+
+% source: results/artifacts_20260910/kernel_admission_4090.log, 106 lines,
+% header results/artifacts_20260910/kernel_admission_4090.header.
+% 17 variants x 3 sizes x 2 proximal settings = 102 comparison rows, rho = 1.9
+% throughout, bitwise column "no" in every row, final line PASS.
+The fused kernel is numerically admitted before it is timed. The archived
+admission run compares $T$ fused iterations against $T$ sequential single-step
+reference launches over 102 cases, 17 built variants at three problem shapes
+and both proximal settings, all at $\rho = 1.9$. The worst absolute deviation
+over all 102 cases is $4.649 \times 10^{-15}$ and the run reports PASS. No case
+is bitwise identical at this $\rho$. The variant names in the log carry the
+thread count, so the two builds that share the label $16\times4$, at 128 and at
+256 threads, are admitted separately, and all six timed tiles appear in the
+log.
+
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz{128,256,384,496}.json
+% source: results/kernel_fusion_20260909/e2e_bw/full_bw_sz{128,256,384,496}.json
+% Totals recomputed by summing t_s over the six instances per arm.
+% NOTE FOR COAUTHOR: the best-speedup and baseline rows here repeat
+% Table~\ref{tab:intro-e2e} in the introduction. Keep one of the two, or drop
+% the baseline rows here and keep only the worst-tile rows.
+Table~\ref{tab:fusion} gives the end-to-end fusion result against the shipped
+traced baseline, with the worst tile of the same sweep beside it.
+
+\begin{table}[t]
+\centering
+\caption{Time to a certified $10^{-4}$ gap over six OCT scans, $K=256$,
+relative to the shipped traced-bound baseline, three timing repeats per image.
+Every arm certified 6 of 6 and every arm inside a cell ran the identical
+per-instance iteration counts. The worst-tile identity at $n=256$ is not
+stable: a 9-repeat re-measurement one day later puts $8\times4$ worst at
+$1.366$ with $32\times2$ at $1.375$, so that one cell is inside the measurement
+spread and the tile name is omitted.}
+\label{tab:fusion}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+$n$ & 128 & 256 & 384 & 496 \\
+\midrule
+4090 baseline (s)  & 0.06647 & 0.07733 & 0.13486 & 0.22564 \\
+4090 best tile     & $8\times4$ & $24\times4$ & $24\times4$ & $32\times4$ \\
+4090 best speedup  & 2.629 & 1.867 & 1.634 & 1.356 \\
+4090 worst tile    & $32\times2$ & not resolved & $8\times4$ & $8\times4$ \\
+4090 worst speedup & 1.320 & 1.298 & 0.926 & 0.743 \\
+\midrule
+Blackwell baseline (s) & 0.05732 & 0.07299 & 0.13750 & 0.19964 \\
+Blackwell best tile    & $8\times4$ & $24\times4$ & $32\times4$ & $16\times2$ \\
+Blackwell best speedup & 1.732 & 1.450 & 1.625 & 1.149 \\
+Blackwell worst speedup & 0.973 & 1.008 & 1.100 & 0.862 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz256.json against
+% results/finish_20260910/fusion_r9_sz256.json (9 repeats, one day later).
+The optimal tile moves with size and with device: the two devices agree at
+$n=128$ and $n=256$ and disagree at $n=384$ and $n=496$. Tile selection is not
+optional. The wrong tile is slower than not fusing at all at the two larger
+sizes on the 4090, and the best-to-worst swing is $1.99\times$ at $n=128$ and
+$1.82\times$ at $n=496$. The identity of the worst tile is $8\times4$ at both
+large sizes and is not resolved at $n=256$, where three repeats and nine
+repeats disagree about which of $8\times4$ and $32\times2$ is worst and the two
+differ by 0.7 percent under the nine-repeat run.
+
+% source: results/kernel_fusion_20260909/e2e_bw/full_bw_sz496.json
+There is a cell where the correct decision is not to fuse. On the Blackwell at
+$n=496$ the best tile reaches only $0.925\times$ of the plain static-loop path
+and the worst reaches $0.862\times$ of the baseline, which belongs in the same
+paragraph as the $1.149\times$ headline for that cell.
+
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz*.json (128 to 496),
+% large/large_4090_m{2,3,4}.json and bw_day2/large_bw_m{2,3,4}.json (992 to 1984)
+% CAVEAT: the three montage sizes use four images per arm, not six, and are
+% built by tiling several distinct scans, because a raw scan caps an honest
+% crop near 496 px. The pixel sizes 992/1488/1984 are the m2/m3/m4 montage
+% convention; the args block of those three files records size 496 and n 4.
+Table~\ref{tab:ushape} sweeps size to 1984 pixels. The fusion gain over the
+static loop is U-shaped on the 4090: it falls monotonically from $1.571\times$
+at 128 pixels to a minimum of $1.060\times$ at 992 pixels and rises to
+$1.410\times$ at 1984 pixels. The Blackwell row is not monotone on either limb,
+running $1.410$, $1.049$, $1.160$, $0.925$, $0.989$, $1.033$ and $1.123$, and
+its minimum sits at 496 pixels. The 4090 trough is a single point and it sits
+exactly at the boundary between the six-crop protocol and the four-montage
+protocol, so we read the shape and not the location. Launch-overhead removal
+accounts for the small end and reduced memory traffic for the large end.
+
+\begin{table}[t]
+\centering
+\caption{Fusion gain over the static loop and static-loop gain over the traced
+bound, by problem size. Sizes 992 and above are montages of several distinct
+scans, four images per arm rather than six, so the two limbs of the 4090 row
+use different instance construction.}
+\label{tab:ushape}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Size (px) & 128 & 256 & 384 & 496 & 992 & 1488 & 1984 \\
+\midrule
+4090 fusion over static      & 1.571 & 1.386 & 1.266 & 1.240 & 1.060 & 1.346 & 1.410 \\
+Blackwell fusion over static & 1.410 & 1.049 & 1.160 & 0.925 & 0.989 & 1.033 & 1.123 \\
+4090 static over traced      & 1.673 & 1.347 & 1.291 & 1.093 & 1.016 & 0.989 & 0.993 \\
+Blackwell static over traced & 1.228 & 1.382 & 1.401 & 1.243 & 1.063 & 1.060 & 1.037 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The static bound decays monotonically on the 4090 and reverses past about 1000
+pixels, to $0.989\times$ at 1488 and $0.993\times$ at 1984, while on the
+Blackwell it does not reverse in this range. At the two largest 4090 sizes the
+best recipe is the traced bound plus fusion rather than the static bound plus
+fusion, so the two execution decisions are not separable at every scale.
+
+% source: results/kernel_fusion_20260909/cadence/cad_4090_K{64,128,256,512}.json
+% source: results/kernel_fusion_20260909/bw_day2/cad_bw_K{64,128,256,512}.json
+% CORRECTION relative to results/kernel_fusion_20260909/REPORT.md section 6,
+% which states the iteration count is 512 at every K in this sweep. It is not.
+Across cadence the argmax is stable and its value is not. At $n=256$ on the
+4090 the fusion gain over the static loop is $1.258\times$, $1.265\times$,
+$1.336\times$ and $1.394\times$ at $K=64$, $128$, $256$ and $512$, and the best
+tile is $24\times4$ at three of four cadences, losing at $K=128$ to $16\times4$
+by 0.6 percent. The Blackwell selects $24\times4$ at all four with gains
+$1.006\times$, $1.024\times$, $1.053\times$ and $1.062\times$. Iteration count
+is not constant across this sweep, at $3712$, $3840$, $3840$ and $4608$ total
+over the six images, so only the gain-over-static-loop column is a clean
+per-iteration comparison and we report only that column.
+
+\subsection{The method axis and the construction gate}
+\label{sec:exp:method}
+
+% source: results/method_axis_20260909/factorial.json
+% 2944 / 682.6667 = 4.3125 exactly, at f64_K256 and tolerance 1e-4.
+% SGM-1: condat_vu 0.05592390 / 0.01349855 = 4.142957;
+%        pdhg      0.05635931 / 0.01343025 = 4.196444.
+Scheme identity is inert on the method axis and step sizes are decisive. At
+$n=256$ under \texttt{f64\_K256} and tolerance $10^{-4}$ the banked setting
+$(\tau, \sigma, \rho) = (0.05, 1.0, 1.9)$ gives mean $682.7$ iterations under
+both schemes and the balanced setting $(0.25, 0.25, 1.5)$ gives $2944.0$ under
+both, a ratio of $4.3125$ on iteration count under both schemes, and on
+penalised SGM-1 time $4.1430$ under Condat-Vu and $4.1964$ under PDHG. At
+$10^{-6}$ the difference becomes feasibility: banked certifies 5 of 6 at mean
+$2966.7$ iterations and balanced certifies 0 of 6, every instance running to the
+5000-iteration cap, though balanced does certify 6 of 6 at $10^{-4}$.
+
+% source: results/netflow_20260909/grid_4090.json (both error strings read
+% verbatim: the Condat-Vu rows print "t*L_f/2 + t*s*||L||^2 < 1 (lhs=...)" and
+% the PDHG rows print "t*s*||L||^2 = ..."; the recorded strings are 1.02267,
+% 1.0304, 1.03577, 1.03781).
+% source: results/structure_20260909/structure_summary_4090.json
+% (raw_t025_s025_gate_lhs = 1.0226746, 1.0304043, 1.0357716, 1.0378125).
+The admissible region is family dependent, and the difference is one of kind.
+The same balanced parameters that are merely slow on TV are rejected before any
+arithmetic runs on every min-cost flow instance: all 24 balanced netflow rows
+fail with gate left-hand side $1.02267$, $1.0304$, $1.03577$ and $1.03781$ at
+grid sizes 12, 16, 24 and 32 against a threshold of 1, and all 24 banked rows
+run. The Condat-Vu rows record $t L_f / 2 + t s \lVert L \rVert^2$ and the PDHG
+rows record $t s \lVert L \rVert^2$; the two coincide here because the min-cost
+flow objective has no smooth term. The structure probe reproduces those four
+values at $t = s = 0.25$ as $1.0226746$, $1.0304043$, $1.0357716$ and
+$1.0378125$, against $0.51994$ to $0.52005$ across the three degree-2 regular
+cells, which are admitted.
+
+% source: results/structure_20260909/structure_summary_4090.json
+% totals: runs 2106, admitted 1755, rejected 351, capped 257,
+% gpu_exec_seconds 987.81.
+Admission is a function of the gate product alone: over 2106 runs the gate
+admits 351 of 351 settings at each of $\theta \in \{0.1, 0.3, 0.6, 0.9,
+0.99\}$ and 0 of 351 at $\theta = 1.02$, admitting 1755 runs in total,
+rejecting 351, capping 257 at the iteration limit and consuming 987.8 GPU
+seconds. Rejected settings were never executed, so the gate is verified as
+sufficient for non-divergence and never as necessary, and 257 of the admitted
+runs still failed to certify inside the cap.
+
+% source: results/structure_20260909/structure_summary_4090.json (norm bounds)
+% source: results/finish_20260910/omega_ot_4090.json
+% (Lnorm = 8.15999999999979, 11.5399826689641, 14.1335345897619;
+%  1.02*sqrt(64) = 8.16, relative errors 2.6e-14, 3.2e-14, 1.1e-14)
+How the region scales with instance size is also a property of the family.
+Min-cost flow norm bounds are bounded in size, at $4.0451$ to $4.0749$ on the
+grid over sizes 12 to 32 and, on the regular topology across 512, 1024 and 2048
+nodes, $2.8843$ to $2.8844$ at degree 2, $3.4781$ to $3.4803$ at degree 3 and
+$3.9364$ to $3.9395$ at degree 4. Optimal transport is the opposite case, and
+measurement confirms its closed form: the recorded norm bound is $8.160000$,
+$11.539983$ and $14.133535$ at the $32\times32$, $64\times64$ and $96\times96$
+cells, which is $1.02\sqrt{m+n}$ to a relative error of $1.1 \times 10^{-14}$
+to $3.2 \times 10^{-14}$, fourteen significant figures rather than bitwise
+agreement, the $1.02$ being the safety inflation and the residual being
+power-iteration accuracy. The admissible product is $0.0150183$, $0.0075091$
+and $0.0050061$, in ratios $2.000$ and $1.500$ that match $m+n = 64$, $128$ and
+$192$ exactly, so that region shrinks as $1/(m{+}n)$.
+
+% source: results/finish_20260910/omega_mcf.json
+% Lnorm 4.323183 at 2 commodities and 4.567979 at 4, both on the 16x16 grid,
+% identical across the three seeds; 4.567979^2 / 4.323183^2 = 1.1165.
+The corpus now contains capacitated multi-commodity flow runs, at two commodity
+counts on one topology. Doubling the commodity count from 2 to 4 on the
+$16\times16$ grid moves the norm bound from $4.323183$ to $4.567979$ and
+shrinks the admissible product by a factor of $1.117$, not by a factor of 2. Two
+points do not identify a rate, so we make no asymptotic claim about how that
+family's admissible region contracts in the number of commodities.
+
+\subsection{Predicting the step ratio from measured structure}
+\label{sec:exp:omega}
+
+% source: results/finish_20260910/omega_4090.json, omega_bw.json (native
+%   omega0 over the 24 cell-and-seed groups: 6.9691 to 9.1254);
+% source: results/structure_20260909/structure_summary_4090.json
+%   (omega0 over the 13 probe cells: 7.5058 to 7.6733);
+% source: results/finish_20260910/omega_ot_4090.json
+%   (native omega0 on optimal transport: 0.4464 to 0.7928).
+% sweep source scripts/diagnostics/omega_sweep.py
+The step-size recipe looked unpredictable for a reason visible only once the
+data are pooled. At native scaling the scale ratio $\omega_0 = \|c\| / \|b\|$
+barely varies within a family: it spans $6.9691$ to $9.1254$ over the 24
+cell-and-seed groups of the netflow sweep, $7.5058$ to $7.6733$ over the 13
+cells of the structure probe and $0.4464$ to $0.7928$ on optimal transport. A
+variable that never varied was never implicated.
+
+% source: results/finish_20260910/omega_4090.json and omega_bw.json.
+% Construction: tau = sqrt(theta*r)/||L||, sigma = sqrt(theta/r)/||L||, so the
+% gate product is theta by construction and the ratio is r by construction.
+% The sweep solves with PDHG at rho = 1 throughout.
+The sweep moves it deliberately. Rescaling $c \mapsto \alpha c$ is exactly
+$(\tau, \sigma) \mapsto (\alpha \tau, \sigma / \alpha)$, which leaves the gate
+product fixed and moves $r = \tau / \sigma$ by $\alpha^2$. We sweep $\alpha$
+and $r$ each over $\{0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100\}$, four decades,
+on 8 cells and 3 seeds at $\theta = 0.99$, $K = 64$, tolerance $10^{-4}$ and a
+cap of 60000 iterations, solving with PDHG at $\rho = 1$: 1944 runs, 1510
+converged, over 216 instances of which 209 have at least one converged run. The
+gate product $\tau \sigma \lVert L \rVert^2$ equals $0.99$ to within
+$3.4 \times 10^{-16}$ in all 1944 rows and exactly in 774 of them, so the sweep
+moves the ratio and never the admissible region. It is worth being plain about
+what that check is and is not: $\theta = 0.99$ is a fixed input to the sweep and
+$\tau$ and $\sigma$ are constructed from it, so the check verifies the
+construction arithmetic and is not evidence that the gate depends on $\theta$
+alone.
+
+% source: results/finish_20260910/omega_4090.json and omega_bw.json, recomputed.
+% PROTOCOL: converged rows only; a group is a (cell, seed) pair sharing a value
+% of log10(r) + 2 log10(alpha) and containing at least two distinct alphas and
+% at least two converged runs; a group qualifies for a window only if EVERY
+% alpha in it lies inside the window. Counting singleton groups as trivially
+% agreeing inflates these counts.
+The exponent 2 in that rescaling identity, which is a different object from the
+exponent $p$ of the rule fitted below, is a measured invariance and not a
+fitted number. Group runs by
+$\log_{10} r + 2 \log_{10} \alpha$ within each cell and seed, and count a group
+only if it holds at least two distinct values of $\alpha$ and at least two
+converged runs. A group qualifies for a window only if every $\alpha$ in it
+lies inside that window. Every group whose values of $\alpha$ are all at least
+1 returns identical iteration counts, 169 of 169 at $\alpha \geq 1$, 83 of 83 at
+$\alpha \geq 3$ and 25 of 25 at $\alpha \geq 10$. Restricting $\alpha$ to
+$[0.3, 3]$ gives agreement in 71 of 72 groups and to $[0.1, 10]$ in 230 of 237.
+Over the whole grid agreement is 437 of 601, and the disagreement sits where
+the objective is far smaller than the constraint data, at 12 of 120 groups
+whose smallest $\alpha$ is $0.01$ and 71 of 120 whose smallest is $0.03$, which
+is where the stopping test loses scale invariance.
+
+% source: results/finish_20260910/omega_4090.json and omega_bw.json.
+% THE PROTOCOL, fixed once for the whole paper and stated in words in every
+% caption that reports these numbers (0-abstract, 1-introduction Table 2,
+% 5-experiments Tables 4 and 6, 6-conclusion Table 2):
+%   metric: certified iteration count N, not wall clock;
+%   instance: a (cell, seed, alpha) triple;
+%   oracle: the minimum certified N over that instance's own ratio grid;
+%   capping: a run that fails to certify inside the 60000-iteration cap is
+%     charged 60000 iterations, so every policy is scored on every instance;
+%   rule: C/omega0^p snapped to the nearest grid ratio in log space;
+%   fixed baseline: the single grid ratio minimising geometric mean regret on
+%     the evaluation set itself, chosen separately for each set, which favours
+%     the baseline.
+% There is no committed analysis script; this was recomputed from the rows.
+% On wall clock from the identical rows the same computation gives 1.626 and
+% 16.92 for r = 0.01, which is also the best fixed ratio on that metric, and
+% the censoring counts move to 88 at the floor and 11 at the ceiling. That is
+% why the metric is named in the caption.
+Table~\ref{tab:regret} scores policies against a per-instance oracle. The best
+single global ratio leaves $1.851\times$ geometric-mean regret and $26.04\times$
+worst case, and a rule that reads the ratio off measured structure,
+$r = C / \omega_0^2$, cuts both.
+
+\begin{table}[t]
+\centering
+\caption{Regret in iteration count against a per-instance oracle over the 209
+instances of the nine-point ratio grid, under the protocol used in every table
+of this paper that reports regret. The metric is $N$ and not wall clock; the
+oracle is the minimum certified iteration count over that instance's own ratio
+grid; a run that fails to certify inside the 60000-iteration cap is charged
+60000 iterations, so all three policies are scored on all 209 instances. The
+certified column is the count each policy solved inside the cap. Both constants
+in the rule rows are fitted on these same 209 instances, so those two rows are
+in sample; the constant carried onto unseen families is the separate fit of
+Table~\ref{tab:transfer}.}
+\label{tab:regret}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Policy & Constant & Geomean regret & Worst case & Certified \\
+\midrule
+Global constant ratio      & $r = 0.01$   & 1.851 & 26.04 & 208 \\
+$r = C / \omega_0^2$, geomean-optimal & $C = 0.263$  & 1.181 & 3.87 & 209 \\
+$r = C / \omega_0^2$, worst-case-optimal & $C = 0.037$ & 1.190 & 3.18 & 209 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Recomputed under the protocol above: 1.85083 / 1.18080 = 1.5675;
+% 26.04167 / 3.86667 = 6.7349; 1.85083 / 1.18998 = 1.5553;
+% 26.04167 / 3.17647 = 8.1984; r = 0.3 gives geomean 2.0403 and worst 6.5833,
+% certifying 180 of 209, and 6.5833 / 3.17647 = 2.0725. The worst-case-optimal
+% constant is flat: every C from 0.0295 to 0.0407 gives the identical worst case
+% 3.17647, so only two digits of C are printed. Scoring each policy only where
+% it certifies instead returns 1.8274 and 23.03 for r = 0.01 on 208 instances.
+The improvement over the best fixed choice is $1.567\times$ on geometric mean
+and $6.73\times$ on worst case at the geomean-optimal constant, and
+$1.555\times$ and $8.20\times$ at the worst-case-optimal constant. Both of
+those worst-case figures are measured against $r = 0.01$, which is the
+geomean-optimal fixed ratio and not the worst-case-optimal one. The
+worst-case-optimal fixed ratio is $r = 0.3$, with geometric mean $2.040$ and
+worst case $6.583$, certifying 180 of 209, so the like-for-like worst-case
+improvement is $2.07\times$. Scoring each policy only where it certifies,
+instead of charging capped runs at the cap, moves the constant-ratio row to
+$1.827\times$ and $23.03\times$ on 208 instances.
+
+% source: results/finish_20260910/omega_4090.json and omega_bw.json
+One caveat travels with this result and Section~\ref{sec:exp:transfer} takes it
+up. The ratio grid censors the optimum: 91 of 209 instances have their best
+ratio at the floor of $0.01$ and 11 at the ceiling of $100$, so 102 of 209
+optima sit on a grid edge, counting an instance as censored when any ratio
+attaining its minimum certified $N$ sits at an endpoint. A naive log-log fit of
+the optimal ratio against $\omega_0$ then returns a slope of $-0.9365$ under the
+geometric tie average this paper uses throughout, against $-0.9309$ with ties
+broken to the smallest ratio and $-0.9421$ to the largest, none of which is the
+exponent.
+
+\subsection{Transfer of the step-ratio rule across families}
+\label{sec:exp:transfer}
+
+% source: results/finish_20260910/omega_wide_bw.json (fit set, 1404 rows)
+% The functional form is not ours: r = C / omega0^2 with omega0 = ||c||/||b||
+% is the primal weight of PDLP, cited in Section 2.
+The functional form of this rule is not new. A step ratio set as
+$C / \omega_0^2$ with $\omega_0 = \lVert c \rVert / \lVert b \rVert$ is the
+primal-weight heuristic of PDLP \citep{Applegate2021Practical}, which this paper
+already credits. What is measured here is how much it is worth against the best
+fixed ratio and whether one constant transfers across families.
+
+% source: results/finish_20260910/omega_wide_bw.json.
+% Fitting p and C jointly on this set alone by minimising geometric-mean regret,
+% over p on a 0.05 grid and C on a 0.01 dex grid, gives p = 2.00 and C = 0.9772
+% at geometric-mean regret 1.18583. The argmin in C is a single grid point at
+% that resolution: the neighbouring points 0.9550 and 1.0000 give 1.18894 and
+% 1.19487. The earlier claim of a plateau from 0.9772 to 0.9886 does not
+% reproduce and is deleted.
+% Refining to p on a 0.01 grid and C on a 0.001 dex grid moves the argmin to
+% p = 1.98, C = 1.040, at regret 1.18573, which is 0.008 percent lower. The
+% coarser argmin is kept because that difference does not identify a rule.
+% This pair, and no other, is used in the abstract, the introduction and the
+% conclusion. The earlier drafts printed C = 1.10 at p = 2 (regret 1.1881) and
+% C = 1.16 at p = 1.8 (regret 1.1981); both are worse on the set they claim to
+% be fitted on and both are deleted.
+We widen the netflow ratio grid to 13 points spanning $10^{-4}$ to $10^{2}$ and
+fit $r = C / \omega_0^p$ on that set alone, by minimising geometric-mean regret
+over $p$ on a $0.05$ grid and $C$ on a $0.01$ dex grid.
+The fit returns $p = 2.00$ and $C = 0.977$, at geometric-mean regret $1.186$.
+That pair is then carried unchanged onto three families the fit never saw, and
+it is the only rule this paper reports.
+
+% Table~\ref{tab:transfer} uses the protocol stated above Table~\ref{tab:regret},
+% unchanged: charge a non-certifying run at the 60000-iteration cap, score every
+% policy on every instance, and pick the fixed ratio per evaluation set.
+Table~\ref{tab:transfer} is the result, under the protocol already used for
+Table~\ref{tab:regret}. Policies are scored in iteration count against a
+per-instance oracle, the minimum certified $N$ over that instance's own ratio
+grid. An instance is a (cell, seed, $\alpha$) triple. A run that fails to
+certify inside the 60000-iteration cap is charged 60000 iterations, so both
+policies are scored on every instance of every set. The fixed-ratio arm is the
+single grid ratio minimising geometric-mean regret on the evaluation set
+itself, chosen separately for each set, which favours the baseline; its
+certified count is reported alongside the rule's because the transferred rule
+certifies every instance of every set.
+
+\begin{table}[t]
+\centering
+\caption{The $\omega_0$ rule carried off the family it was fitted on. The rule
+is $r = 0.977 / \omega_0^2$, fitted on netflow wide alone and then evaluated
+unchanged. Regret is in iteration count against a per-instance oracle over that
+instance's own ratio grid, with a run that fails to certify inside the
+60000-iteration cap charged at the cap, so both policies score every instance of
+every row. The fixed column is the single grid ratio minimising geometric-mean
+regret on that set, chosen separately per set, and the certified columns are the
+instances each of the two policies solved inside the cap. The pooled row is the
+geometric mean over the 162 held-out instances, each family carrying its own
+best fixed ratio.}
+\label{tab:transfer}
+\begin{tabular}{@{}lrlrrrrr@{}}
+\toprule
+& & & \multicolumn{2}{c}{geomean regret} & & \multicolumn{2}{c}{certified} \\
+\cmidrule(lr){4-5} \cmidrule(lr){7-8}
+Evaluation set & $n$ & $\omega_0$ range & fixed & rule & rule worst & rule & fixed \\
+\midrule
+netflow wide (fitted on) & 108 & 0.0697 to 825 & 2.779 & 1.186 & 2.12 & 108 & 100 \\
+optimal transport        &  54 & 0.0054 to 79.3 & 1.428 & 1.179 & 1.56 &  54 & 54 \\
+multi-commodity flow     &  54 & 0.0227 to 312 & 2.840 & 1.032 & 1.26 &  54 & 48 \\
+held-out topologies      &  54 & 0.0735 to 806 & 2.514 & 1.190 & 1.83 &  54 & 44 \\
+\midrule
+pooled held out          & 162 & 0.0054 to 806 & 2.168 & 1.131 & 1.83 & 162 & 146 \\
+\bottomrule
+\end{tabular}
+% source: results/finish_20260910/omega_wide_bw.json (108 instances, 13 ratios)
+% source: results/finish_20260910/omega_ot_wide.json (54 instances, 13 ratios)
+% source: results/finish_20260910/omega_mcf.json (54 instances, 12 ratios)
+% source: results/finish_20260910/omega_holdout.json (54 instances, 13 ratios)
+% Recomputed to four decimals: rule geomean 1.1858 / 1.1786 / 1.0318 / 1.1899
+%   / 1.1311; rule worst 2.1250 / 1.5625 / 1.2623 / 1.8252 / 1.8252.
+% Best fixed under the protocol in the caption: 2.7790 at r = 0.03 certifying
+%   100 of 108; 1.4279 at r = 100 certifying 54 of 54; 2.8395 at r = 0.1
+%   certifying 48 of 54; 2.5136 at r = 0.003 certifying 44 of 54; pooled 2.1681
+%   certifying 146 of 162. A single ratio shared across the three held-out
+%   families, drawn from the 11 ratios their grids have in common, is worse
+%   still, r = 3 at 2.8204.
+% Under the alternative protocol, scored only where certified with an 80 percent
+%   coverage floor: 2.1513 at r = 0.0003 on 87 of 108; 1.4279 at r = 100 on
+%   54 of 54; 2.1854 at r = 0.001 on 44 of 54; 1.9475 at r = 0.0001 on 45 of 54;
+%   pooled per family 1.8249 on 143 of 162. One shared ratio under the same
+%   80 percent floor gives r = 0.1 at 2.5039 on 130 of 162; with the floor
+%   dropped, r = 30 at 1.7516 on 108 of 162.
+% omega_0 endpoints to four decimals: 0.0697 to 825.2357; 0.0054 to 79.2830;
+%   0.0227 to 311.5050; 0.0735 to 806.2762; 0.0054 to 806.2762. These are over
+%   all seeds; computing them on one seed gives different and wrong endpoints.
+\end{table}
+
+The gain over the best fixed ratio is $2.34\times$ on the set the rule was
+fitted on, $1.21\times$ on optimal transport, $2.75\times$ on multi-commodity
+flow and $2.11\times$ on the held-out topologies, and $1.92\times$ pooled over
+the 162 held-out instances. The comparison is protocol dependent and we give the
+other reading here rather than in a second table. Under the alternative protocol
+in which each policy is scored only on the instances it certifies, with the
+fixed ratio restricted to those certifying at least 80 percent of the set, the
+fixed baselines improve to $2.151\times$ on 87 of 108 netflow wide instances,
+$1.428\times$ on 54 of 54 optimal transport, $2.185\times$ on 44 of 54
+multi-commodity flow and $1.947\times$ on 45 of 54 held-out topologies, a pooled
+$1.825\times$ on 143 of the 162 held-out instances. They are then measuring a
+different and smaller problem on every row, which is why the tables do not use
+that protocol. Dropping the coverage floor as well lets one shared ratio certify
+barely two thirds of the pooled set, $r = 30$ at $1.752\times$ on 108 of 162.
+The rule is untouched by the choice at $1.186$, $1.179$, $1.032$, $1.190$ and
+$1.131$, because it certifies every instance of every set.
+
+% source: results/finish_20260910/omega_wide_bw.json, omega_ot_wide.json,
+% omega_mcf.json, omega_holdout.json. Native omega0 at alpha = 1:
+% netflow 6.9691 to 8.2524; optimal transport 0.5419 to 0.7928;
+% multi-commodity flow 2.2666 to 3.1151; held-out topologies 7.3548 to 8.0628.
+The sample structure has to be stated plainly, because it bounds what transfer
+means here. Each set is (cells $\times$ seeds) distinct problems replicated at
+nine synthetic rescalings of $c$: netflow wide is 12 distinct problems at 9
+values of $\alpha$, and each held-out set is 6 at 9. Variation in $\omega_0$
+within a set is therefore variation in $\alpha$, and $c \mapsto \alpha c$ is
+exactly $(\tau, \sigma) \mapsto (\alpha \tau, \sigma / \alpha)$. The native
+$\omega_0$ spread inside netflow is only $6.97$ to $8.25$, a factor of $1.18$,
+so the rule is being tested on rescalings and not on naturally occurring scale
+variation. The part that is not a rescaling is the comparison across families:
+optimal transport sits at native $\omega_0$ of $0.54$ to $0.79$ and
+multi-commodity flow at $2.27$ to $3.12$, both genuinely away from netflow's
+$7.5$, and the transferred constant is not refitted for either.
+
+% source: the same four files. Refitting C per family at p = 2 by the same
+% grid search: 0.977 on netflow wide, 31.62 on optimal transport, 1.380 on
+% multi-commodity flow, 0.275 on the held-out topologies. 31.62 / 0.275 = 115.
+One constant does not fit every family. Refitting $C$ per family at $p = 2$
+gives $0.977$ on netflow wide, $31.62$ on optimal transport, $1.380$ on
+multi-commodity flow and $0.275$ on the held-out topologies, a span of a factor
+of 115 between the smallest and the largest. What Table~\ref{tab:transfer}
+reports is the netflow constant used unchanged, and the residual gap on
+optimal transport, $1.179$ against a per-family-optimal $1.026$, is the price
+of that transfer.
+
+% source: results/finish_20260910/omega_4090.json and omega_bw.json (narrow),
+% omega_wide_bw.json (wide), omega_seeds8.json (8 seeds),
+% omega_ultrawide_bw.json (ten decades of r, eleven alphas, 4 seeds),
+% omega_fine_4090.json (finer ratio grid).
+% CONVENTIONS, the same two used in 0-abstract, 1-introduction and 6-conclusion
+% and named in the caption of Table~\ref{tab:exponent}:
+%   censoring: an instance counts as censored when ANY ratio attaining its
+%     minimum certified N sits at an endpoint of that instance's grid;
+%   slope ties: the log-log fit of the argmin ratio against omega0 runs over the
+%     instances with a converged run, with tied argmin ratios averaged
+%     geometrically. Under the other two tie rules, ties to the smallest and
+%     ties to the largest, the five slopes move by at most 0.011.
+% Regret-optimal exponent by grid search over p on a 0.05 grid at the best C on
+% a 0.01 dex grid, the same resolution as the fit above.
+% Slopes to four decimals: -0.9365, -1.5412, -1.5781, -1.6834, -1.7380.
+% Censoring to the convention above: 102 of 209 (91 floor, 11 ceiling), 33 of
+% 108, 46 of 144, 15 of 80, 14 of 88.
+Two estimators of the exponent disagree, and reducing censoring moves only one
+of them. Table~\ref{tab:exponent} runs both over five ratio grids of increasing
+width. The log-log slope of the argmin ratio against $\omega_0$ rises in
+magnitude from $-0.94$ on the original grid, where 102 of 209 optima sit on a
+grid edge, to $-1.74$ on the ultrawide ten-decade grid, where 14 of 88 do. The
+regret-minimising exponent does not move with it: it is $2.10$, $2.00$, $1.90$,
+$2.00$ and $2.00$ on the same five grids. The honest reading is that censoring
+biases the slope estimator toward zero, that removing censoring moves it from
+$-0.94$ toward $-1.74$ without reaching the regret estimator, and that the two
+therefore bracket the exponent between about $1.7$ and $2.1$ and have not met.
+That bracket is consistent with the value 2 implied by the primal weight, and at
+its lower end below it; we do not claim the exponent is exactly 2, and no
+estimator on any of the five grids returns $1.8$ as its argmin. The regret
+profile is flat enough to say how finely the data resolve it. On the original
+grid the set of exponents within 1 percent of the optimum is not even an
+interval: it runs from $1.40$ to $2.90$ with an isolated point at $1.15$. On the
+ultrawide grid, which is the least censored, that set is $1.80$ to $2.25$, with
+$p = 1.8$ costing $0.8$ percent and $p = 2.4$ costing $2.2$ percent. That is the
+regret estimator alone; the verdict this paper carries is the two-estimator
+bracket above, about $1.7$ to $2.1$. The finer 19-point grid has now run and is
+the fourth row of the table; it does not narrow
+the bracket, returning $-1.68$ and $2.00$, between the wide and ultrawide grids
+on both estimators.
+
+\begin{table}[t]
+\centering
+\caption{Two estimators of the exponent in $r = C / \omega_0^p$, over five
+ratio grids, under the two conventions used wherever this paper reports them.
+Censoring is the count of instances for which any ratio attaining the minimum
+certified $N$ sits at an endpoint of that instance's grid. The slope is a
+log-log fit of the argmin ratio against $\omega_0$ over the instances with a
+converged run, with tied argmin ratios averaged geometrically; the other two tie
+rules move each slope by at most $0.011$. The regret exponent minimises
+geometric-mean regret in iteration count, searched over $p$ on a $0.05$ grid at
+the best constant on a $0.01$ dex grid for each exponent.}
+\label{tab:exponent}
+\begin{tabular}{@{}lrlrrr@{}}
+\toprule
+Grid & $n$ & Ratio range & Censored & Slope & Regret exponent \\
+\midrule
+original    & 209 & $10^{-2}$ to $10^{2}$  & 102 & $-0.94$ & 2.10 \\
+netflow wide & 108 & $10^{-4}$ to $10^{2}$ & 33 & $-1.54$ & 2.00 \\
+8 seeds     & 144 & $10^{-4}$ to $10^{3}$  & 46 & $-1.58$ & 1.90 \\
+finer grid  &  80 & $10^{-5}$ to $3 \times 10^{2}$ & 15 & $-1.68$ & 2.00 \\
+ultrawide   &  88 & $10^{-6}$ to $10^{4}$  & 14 & $-1.74$ & 2.00 \\
+\bottomrule
+\end{tabular}
+% source: results/finish_20260910/omega_4090.json + omega_bw.json; omega_wide_bw.json;
+% source: results/finish_20260910/omega_seeds8.json; omega_fine_4090.json; omega_ultrawide_bw.json
+% Slopes with ties averaged geometrically: -0.9365, -1.5412, -1.5781, -1.6834,
+%   -1.7380. Ties to the smallest ratio: -0.9309, -1.5307, -1.5716, -1.6762,
+%   -1.7324. Ties to the largest: -0.9421, -1.5516, -1.5845, -1.6905, -1.7437.
+% Best regret at the argmin exponent, C on a 0.01 dex grid: 1.1805, 1.1858,
+%   1.1571, 1.1685, 1.0618.
+% Ultrawide profile at the same resolution: p=1.8 gives 1.0702, p=2.0 gives
+%   1.0618, p=2.4 gives 1.0853. On a 0.001 dex grid in C the p=2.0 value is
+%   1.0574; every figure printed in the paper uses the 0.01 dex grid.
+% Within 1 percent of the optimum, by grid: {1.15} together with 1.40 to 2.90;
+%   1.85 to 2.15; 1.65 to 2.45; 1.75 to 2.05; 1.80 to 2.25.
+% The finer grid is omega_fine_4090.json: 19 ratios from 1e-5 to 300, spaced by
+%   a factor of about 2.6. It has run; no sentence in this paper says otherwise.
+\end{table}
+
+\subsection{Negative results}
+\label{sec:exp:negative}
+
+% source: results/diagnostics_20260909/roofline_4090.json (model inputs) and
+% results/diagnostics_20260909/REPORT.md lines 26-29 (prose table, all four
+% rows including the 0.567 fitted-launch-cost row). The four scores were
+% reproduced on 2026-09-10 by running scripts/diagnostics/score_roofline.py,
+% whose stdout is archived at
+% results/artifacts_20260910/roofline_scores_4090.log, 26 lines: mean Spearman
+% 0.355, 0.363, 0.282 and 0.567 with pick rates 1/7, 0/7, 0/7 and 1/7, and M1
+% per-size correlations -0.943 at n=128 and +0.829 at 992, 1488 and 1984.
+Cheap a-priori predictors fail on the task where $\omega_0$ succeeds.
+Table~\ref{tab:roofline} scores four analytic models of the fusion tile against
+measurement by rank correlation over 7 sizes and 6 tiles.
+
+\begin{table}[t]
+\centering
+\caption{Analytic tile selection against measurement. Occupancy raises the rank
+correlation from $0.355$ to $0.363$ and lowers the best-tile hit rate from 1 of
+7 to 0 of 7. All four models pick the best tile at most 1 time in 7, which is
+the load-bearing figure.}
+\label{tab:roofline}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Model & Mean Spearman & Picked the best tile \\
+\midrule
+Roofline only                        & 0.355 & 1 of 7 \\
+Plus occupancy                       & 0.363 & 0 of 7 \\
+Plus occupancy and wave quantisation & 0.282 & 0 of 7 \\
+Plus a fitted per-launch cost of $10^{-5}$\,s & 0.567 & 1 of 7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% source: results/diagnostics_20260909/roofline_4090.json
+% All four device constants verified: 746.6579 GB/s, 1.1402 TFLOP/s, ridge
+% 1.5271 flop/byte, unfused intensity 0.5536, 24x4 intensity 2.7253.
+The interpretable structure is a change of regime. The roofline-only model
+scores $-0.943$ at $n=128$ and $+0.829$ at $n \geq 992$, so it is right only
+once the kernel is bandwidth-bound and is anti-correlated when the kernel is
+overhead-bound. The device constants are 746.7\,GB/s achievable float64
+bandwidth, 1.140\,TFLOP/s float64 and a ridge point of 1.527 flop per byte, on
+an accounting of 31 flops and 56 bytes per pixel-iteration; the unfused TV
+iteration sits at 0.554 flop per byte and the $24\times4$ tile reaches 2.725,
+above the ridge. Two caveats belong in the text and not in a comment: the flop
+count is hand-counted from \texttt{tv\_update.cu} and not instrumented, and
+occupancy is computed from assumed Ada AD102 constants rather than from a
+device query.
+
+% source: results/diagnostics_20260909/sharpness_full_4090.json, recomputed.
+% Log-log Pearson over the converged rows: pooled +0.9426 (17), netflow -0.5387
+% (13), regular -0.8423 (6), grid -0.1197 (7), TV +0.9825 (4).
+Empirical sharpness looks predictive and is not. Over 17 converged instances the
+correlation between log sharpness and log iteration count is $+0.943$ pooled,
+$-0.539$ within min-cost flow over 13 instances, $-0.842$ within the regular
+topology over 6, $-0.120$ within the grid topology over 7 and $+0.983$ within
+TV over 4. That last figure is a four-point correlation spanning only two image
+sizes and is really tracking size, as the source report's own caveat says. The
+pooled figure only separates two clusters, min-cost flow at mean sharpness 92.1
+and mean 10230 iterations against TV at 43.3 and 624. Within a family the sign
+inverts.
+
+% source: results/diagnostics_20260909/sharpness_full_4090.json, recomputed.
+% Quantity: log of the fitted decay rate of the gap over the stated window of
+% certificate checks, against log N, over the 13 converged min-cost flow rows.
+% Recomputed: +0.5387, +0.2006, +0.0177, -0.2751, -0.3686, -0.6201, and
+% -0.7551 for the last window when the thirteenth instance is scored on its
+% truncated window instead of dropped.
+A leakage-free version of the estimator has to watch most of the solve before it
+becomes even moderately predictive. Estimating the gap decay rate on a fixed
+index window of certificate checks and correlating its logarithm against log
+iteration count over the min-cost flow instances gives $+0.539$ over the first 3
+checks, $+0.201$ over 5, $+0.018$ over 10, $-0.275$ over checks 10 to 20,
+$-0.369$ over 20 to 40 and $-0.620$ over 40 to 80. The sign flips halfway
+through: early in the solve a faster measured decay goes with more iterations
+and not fewer, and only over checks 40 to 80 does the windowed estimate acquire
+the negative sign that the full-solve sharpness estimate carries within
+min-cost flow, $-0.539$. That window is scored on the 12 of 13 instances
+that record at least 80 certificate checks; scoring the thirteenth on its
+truncated window instead gives $-0.755$. Checks are 64 iterations apart, so the
+window ends at 5120 iterations against a median min-cost flow solve of 9600, and
+the estimator reaches $|r| = 0.620$ only after 53 percent of the run.
+
+% source: results/structure_20260909/structure_summary_4090.json
+The one structure-dependent selector that does work is the construction gate.
+It is exact, symbolic and free, and admits 1755 of 2106 settings purely as a
+function of the gate product, 351 of 351 at each of $\theta \in \{0.1, 0.3,
+0.6, 0.9, 0.99\}$ and 0 of 351 at $\theta = 1.02$. Rejected settings were never
+executed, so the gate is verified as sufficient for non-divergence and never as
+necessary, and 257 of the admitted runs still hit the iteration cap. It is a
+feasibility test and not a rate test, so it tells a search which recipes are
+legal and nothing about which legal recipe is fast. That is the hinge between
+these negatives and the case for search.
+
+\subsection{Measurement conditions}
+\label{sec:exp:conditions}
+
+% source: results/tv_ffi_20260906/DECOMPOSITION_REPORT.md lines 6 to 8. The
+% 12-process stability run has NO saved artifact; it is prose in that report,
+% for the f64_K64 cell at n=256.
+% source: results/finish_20260910/fusion_r9_sz256.json and fusion_r9_sz496.json
+% against results/kernel_fusion_20260909/e2e/full_4090_sz{256,496}.json.
+% Recomputed drift: baseline +1.97 and +1.07 percent; static over traced
+% 1.3470 -> 1.4008 (+3.99 percent) and 1.0933 -> 1.1788 (+7.81 percent);
+% best tile 1.8675 -> 1.9396 and 1.3556 -> 1.4279.
+Timing runs were not on exclusive machines. One dispersion figure is available
+as prose only: the reference cell \texttt{f64\_K64} at $n=256$, re-measured in
+12 independent processes, spans 20.297 to 20.432 microseconds per iteration, a
+spread of 0.66 percent, and that run has no saved artifact. A recomputable
+dispersion is available and is larger. Re-running the $n=256$ and $n=496$
+fusion sweeps at 9 repeats one day later moves the traced baseline by 2.0 and
+1.1 percent, the static-over-traced gain from $1.347$ to $1.401$, a change of
+4.0 percent, and from $1.093$ to $1.179$, a change of 7.8 percent, and the
+best-tile speedup from $1.868$ to $1.940$ and from $1.356$ to $1.428$. No
+fusion figure in this section is stable in its third significant figure. The
+fusion tables print three digits so that the arithmetic can be checked against
+the artifacts, and only the first two should be read as measured.
+
+% source: results/method_axis_20260909/data.json ('final_holdout_loaded': false)
+% source: results/hardware_codex/REPORT.md line 7 ("The original
+% pre-registration and final holdout remain untouched.")
+The frozen final holdout has never been evaluated, and none of the figures in
+this section touch it. The families described as held out in
+Section~\ref{sec:exp:transfer} are held out from the rule fit only; they are not
+the frozen paper holdout.
+
+A vLLM server held 15.4\,GB resident on the timed 4090 at 0 percent
+utilisation throughout. The Blackwell box is shared: the fusion microbenchmarks
+used GPU 2 at 0 percent utilisation but not exclusively, and all four GPUs were
+idle for the cross-architecture end-to-end runs.

@@ -1,0 +1,1479 @@
+% Experiment log and working notes (started 2026-09-10).
+% Living record of every experiment run, every negative result, and every
+% direction tried and dropped. Numbers are copied from artifacts under
+% results/ in the code repository (github.com/miria00/OptimizationAtlas, v2/).
+% Style rules: never use the em-dash; no italic text; -ize/-ization spelling
+% (customization, factorization, optimization), except -wise suffixes, revise,
+% exercise, noise/denoising, and file paths, which keep their own spelling.
+\section{Experiment log and working notes}
+\label{app:log}
+
+This appendix is the running record of the project. It lists what was
+measured, on which data and hardware, and what was tried and abandoned.
+Negative results are kept on purpose: several of them decide what the paper
+may and may not claim. Every number is traceable to an artifact in the code
+repository; the path is given in each subsection.
+
+\subsection{Three axes of customization}
+\label{app:log:axes}
+
+A solver is varied along three axes, and each experiment below moves one of
+them. Naming them separately is what makes the negative results readable: a
+recipe that wins on one family and loses on another has not failed, it has
+located an axis-two boundary.
+
+\begin{enumerate}
+\item The solving algorithm. The base operator, the wrappers composed onto it
+  (relaxation, anchoring, fixed and adaptive restarts, safeguarded
+  acceleration), the metric, and the certificate cadence. This axis acts
+  mainly on $N$, the number of iterations needed to certify.
+\item The input problem family. Real data at several scales, described by the
+  structure of the instance and by its conditioning. This axis does not make a
+  recipe faster; it decides which recipe is right, and which baseline is even
+  able to run.
+\item The hardware. Execution structure, storage precision, and kernel and
+  iteration fusion. This axis acts on $t$, the cost of one iteration.
+\end{enumerate}
+
+The product $T = N \times t$ is what a user experiences, and the certificate
+cadence is the only gene that appears in both factors, which is why it is
+treated separately throughout.
+
+\subsection{What was run, and what was found}
+\label{app:log:scoreboard}
+
+Every row is measured against solvers written by their authors, on downloaded
+real data except where marked generated, with acceptance being our own
+float64 certificate in the original coordinates. Detail and artifact paths are
+in the subsections that follow.
+
+\begin{center}
+\small
+\begin{tabular}{p{2.5cm}p{2.6cm}p{2.2cm}p{6.1cm}}
+\toprule
+Family & Data and scale & Baseline & Outcome \\
+\midrule
+TV denoising & six images, $n=128$ to $496$ & our own XLA loop & Fusion wins on the hardware axis: $1.36\times$ to $2.63\times$ end to end on the RTX 4090, $1.15\times$ to $1.73\times$ on the Blackwell. Admission is bitwise identical at $\rho=1$. \\
+\addlinespace
+Elastic-net logistic & epsilon (LIBSVM), $10^5\times2000$, ten penalty settings & cuML, same GPU & $2.28\times$ ($95\%$ interval $[1.73, 3.01]$) on ten of ten for a repeated solve, and $0.06\times$ for a first solve on an empty cache. The margin is monotone in the penalty weight and crosses over near $0.05\lambda_{\max}$. \\
+\addlinespace
+Convex QP, Maros-Meszaros & 137 published instances & OSQP, SCS, Clarabel & No win. We certify 55 to 63 instances against OSQP's 123 and Clarabel's 132, and are $4.5\times$ to $5.8\times$ slower where both solve. Every instance factorizes cheaply. \\
+\addlinespace
+Convex QP, generated lasso & $n$ from $25{,}000$ to $750{,}000$ variables & OSQP, SCS, Clarabel & $1.98\times$ over Clarabel at $25{,}000$ and $6.04\times$ at $75{,}000$. At $250{,}000$ we finish in $102.7$ s while Clarabel is killed by the operating system at $28.9$ GB and OSQP does not certify in $5400$ s. Our own cost per iteration also degrades with size. \\
+\addlinespace
+Convex QP, generated SVM & $n$ from $3300$ to $110{,}000$ & OSQP, SCS, Clarabel & The ADMM solvers are beaten from about $11{,}000$ variables, and Clarabel never is: its lead grows with size, because the coupling constraints give an interior-point method a system that factorizes well. Measured before the timing correction of Section~\ref{app:log:defects} and not repeated. \\
+\addlinespace
+Optimal transport, DOTmark & $32\times32$ and $64\times64$ & POT exact network simplex & Lost by $5\times$ to $32\times$ and abandoned. The exact simplex is very strong at these sizes, and the entropic scheme never certified on the original problem. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Read along axis two, the pattern is that the wins are family dependent rather
+than merely size dependent. A large instance is not sufficient: the generated
+SVM family is large and is never won against Clarabel, while the generated
+lasso family of the same size is, because the two give an interior-point
+method very different systems to factorize. The one clean statement at the
+largest sizes is not about speed at all, but about which solvers still run.
+
+No new algorithm is claimed. The ingredient that carries the logistic result,
+recomputing the Lipschitz constant on the current working set, is published:
+Wang, Yu, Liang, Wu and Yu, An Iterative Reduction FISTA Algorithm for
+Large-Scale LASSO, SIAM Journal on Scientific Computing 44(4), 2022, use it on
+the same epsilon data at the same penalty weight and attribute their speedup
+to the same smaller constant. What is ours is the measurement, the attribution
+between ingredients, and the derivation of the recipe from measured symptoms.
+
+\subsection{Conventions}
+\label{app:log:conventions}
+
+\begin{itemize}
+\item Hardware. An NVIDIA RTX 4090 (sm\_89, local, shared with an LLM
+  inference server) and an NVIDIA RTX PRO 6000 Blackwell Max-Q (sm\_120,
+  97.9 GB, a shared four-GPU server of which one GPU is used for timing).
+  CPU baselines run on an Intel Core i7-12700K, single threaded, one process
+  pinned to one performance core.
+\item Certificates. Always evaluated in float64 and in the original problem
+  coordinates, whatever precision or rescaling the solver uses internally.
+  LP and OT: the PDLP-style relative gap (primal residual, dual residual,
+  objective gap). QP: OSQP's primal and dual residuals plus the duality gap.
+\item Timing. Our solver's execution time excludes JIT compilation (reported
+  separately). Baseline times include their own setup, which favours our
+  solver on very small instances; this is stated wherever it matters.
+\item Data. Every problem family is benchmarked on downloaded real data with
+  a source URL and a sha256 manifest. Synthetic generators appear only in
+  unit tests and early probes and are marked as synthetic below.
+\item Instance manifests. Every iteration count names its data seed and draw
+  size, because both change the sampled instances (Section~\ref{app:log:a1}).
+\end{itemize}
+
+\subsection{Data provenance}
+\label{app:log:data}
+
+\begin{center}
+\small
+\begin{tabular}{p{2.3cm}p{4.6cm}p{5.6cm}}
+\toprule
+Family & Data & Source \\
+\midrule
+TV denoising & Kermany 2017 retinal OCT B-scans (real clinical speckle) &
+  Hugging Face \texttt{zacharielegault/Kermany2017-OCT} \\
+LP & 297 instances: MIPLIB 2017 (236), fctp transportation (32), Mittelmann
+  network (7); 47 above $10^6$ nonzeros & MIPLIB and Mittelmann benchmark
+  pages; manifest \texttt{data/lp\_suites/MANIFEST.json} \\
+Min-cost flow & road networks (DC, DE), a vision instance (246K nodes, 1.43M
+  arcs), DIMACS netgen & \url{http://lime.cs.elte.hu/~kpeter/data/mcf}
+  (no reader yet) \\
+Elastic net & rcv1, real-sim, news20, E2006 & LIBSVM data sets \\
+Convex QP & Maros-Meszaros, 138 instances, $n$ from 2 to 93263 &
+  \url{https://github.com/qpsolvers/maros_meszaros_qpbenchmark} \\
+Optimal transport & DOTmark 1.0: 10 classes, resolutions 32 to 512, 500
+  images & \url{https://www.stochastik.math.uni-goettingen.de/DOTmark_1.0.zip} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Synthetic generators used in probes: grid and random-regular min-cost flow,
+point-cloud optimal transport, and multi-commodity flow built on the grid
+generator.
+
+\subsection{The factorization $T = N \times t$ on TV denoising}
+\label{app:log:factorisation}
+
+Artifacts: \texttt{results/tv\_ffi\_20260906/DECOMPOSITION\_REPORT.md},
+\texttt{results/kernel\_fusion\_20260909/REPORT.md}.
+
+Time to a certified solution factors into the iteration count $N$ and the
+per-iteration cost $t$. Measured on TV denoising of $256\times256$ OCT
+patches, six images, RTX 4090, tolerance $10^{-4}$:
+
+\begin{itemize}
+\item $N$ is invariant to hardware: 584, 597 and 683 at cadence $K=16, 64,
+  256$, identical across two GPU architectures, both precisions, both
+  execution structures, and every kernel.
+\item Scheme identity is inert at coarse cadence: PDHG and Condat-Vu give 683
+  and 683 at $K=256$. Step sizes are worth $4.31\times$ on $N$ and decide
+  feasibility at $10^{-6}$ (the balanced setting certifies 0 of 6).
+\item The precision gene was confounded with execution structure: the
+  float64 path ran a device loop with a traced inner trip count, the float32
+  path ran host-chunked phases with a static one. Separated, float32 buys
+  nothing inside the device loop and $1.58\times$ once the loop is chunked.
+\end{itemize}
+
+\begin{center}
+\small
+\begin{tabular}{llccc}
+\toprule
+Execution & Precision & $K=16$ & $K=64$ & $K=256$ \\
+\midrule
+device loop & f64 & 22.54 & 20.39 & 19.78 \\
+device loop & f32 & 22.99 & 20.41 & 19.78 \\
+host phases & f64 & 27.18 & 16.19 & 13.29 \\
+host phases & f32 & 28.00 & 12.23 & 8.43 \\
+\bottomrule
+\end{tabular}
+
+Per-iteration cost $t$ in microseconds.
+\end{center}
+
+The loop penalty is one line of code: a traced inner trip count costs
+$2.02\times$ per iteration at $n=256$ and $1.18\times$ at $n=496$ against a
+static one (nesting and \texttt{while\_loop} are free). On the CPU the same
+choice costs $1.24\times$ at $n=128$ and inverts to $0.84\times$ at $n=256$.
+
+\paragraph{Resolved discrepancy.}
+\label{app:log:a1}
+Two artifacts printed mean iteration counts 682.667 and 640.0 for the same
+setting. The cause was the data draw, not a broken invariance: the harnesses
+used data seeds 20260907 and 0 and draw sizes 12 and 6, and the two sampled
+sets shared 0 of 6 scans. Rerun on the catalog's draw, the fusion harness
+gives 683. Artifact: \texttt{results/artifacts\_20260910/A1\_RESOLUTION.md}.
+
+\subsection{Temporal fusion kernel}
+\label{app:log:fusion}
+
+A CUDA kernel runs $T$ PDHG or Condat-Vu iterations per launch on a
+$(B+2T)\times(B+2T)$ tile with halo in shared memory. Numerical admission
+against $T$ sequential reference launches: bitwise identical at $\rho=1$, at
+most $4.649\times10^{-15}$ at $\rho=1.9$, on both architectures. Total wall
+time over six images to a certified $10^{-4}$ gap, $K=256$, RTX 4090:
+
+\begin{center}
+\small
+\begin{tabular}{rccccc}
+\toprule
+$n$ & baseline (s) & static loop & best fusion (tile) & total & worst tile \\
+\midrule
+128 & 0.06647 & $1.673\times$ & $1.571\times$ ($B=8$, $T=4$) & $2.629\times$ & $1.320\times$ \\
+256 & 0.07733 & $1.347\times$ & $1.386\times$ ($B=24$, $T=4$) & $1.867\times$ & $1.298\times$ \\
+384 & 0.13486 & $1.291\times$ & $1.266\times$ ($B=24$, $T=4$) & $1.634\times$ & $0.926\times$ \\
+496 & 0.22564 & $1.093\times$ & $1.240\times$ ($B=32$, $T=4$) & $1.356\times$ & $0.743\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+On the Blackwell GPU the end-to-end gains are $1.73\times$, $1.45\times$,
+$1.63\times$ and $1.15\times$ at the same four sizes. The best tile agrees
+across devices at $n=128$ and $256$ and disagrees at $384$ and $496$; at
+$n=496$ on the Blackwell even the best tile is $0.925\times$ of the static
+loop, so the right decision there is not to fuse. The wrong tile is slower
+than not fusing at $n=384$ and $496$. On the catalog's own instance draw at
+$n=256$, $K=256$, the gain is $1.857\times$. This remains the only result in
+the project that beats software people actually use (XLA's compiled loop).
+
+\subsection{Predicting the recipe instead of searching: two negatives}
+\label{app:log:diagnostics}
+
+Artifact: \texttt{results/diagnostics\_20260909/REPORT.md}.
+
+\begin{itemize}
+\item Arithmetic intensity does not pick the fusion tile. Roofline models
+  scored against the measured sweep (7 sizes, 6 tiles) reach mean Spearman
+  correlation 0.355 (roofline), 0.363 (plus occupancy), 0.282 (plus wave
+  quantization) and 0.567 (plus a fitted launch cost), and pick the true best
+  tile in at most 1 of 7 sizes. Roofline is anti-correlated in the
+  overhead-bound regime ($-0.943$ at $n=128$) and correct only once the
+  kernel is bandwidth bound ($+0.829$ at $n\ge992$).
+\item Early sharpness of the gap curve does not predict $N$. The pooled
+  correlation across families reversed within families (a Simpson's paradox)
+  and a leakage defect was found in the first version of the probe; sharpness
+  is not used as a predictor.
+\end{itemize}
+
+\subsection{Problem families beyond TV}
+\label{app:log:families}
+
+\paragraph{Min-cost network flow (synthetic grid and regular generators).}
+Artifacts: \texttt{results/netflow\_20260909/}, \texttt{results/structure\_20260909/}.
+The execution-structure gain replicates on a sparse LP: mean $1.386\times$
+(range 1.277 to 1.492, 24 runs), with $N$ identical across loop structures
+in 24 of 24 runs and identical between PDHG and Condat-Vu. The step sizes
+that were merely slow on TV are inadmissible here: the construction gate
+rejects them before execution ($t s \|L\|^2 = 1.02267$), 24 of 48
+configurations. In the structure sweep (2106 runs, 1755 admitted, 351
+rejected) admission depends only on the fill $\theta = t s \|L\|^2$: every
+$\theta\le0.99$ is admitted and $\theta=1.02$ never is. The admissible
+region is family dependent: $\|A\|=\sqrt{m+n}$ for transport, a region
+shrinking as $\Theta(1/K)$ in the number of commodities for multi-commodity
+flow, and a norm that saturates at 4 on grids.
+
+\paragraph{The primal-weight rule.}
+Artifacts: \texttt{results/finish\_20260910/omega\_*.json}. A step-ratio rule
+$r = C/\omega_0^p$ with $\omega_0 = \|c\|/\|b\|$ was fitted from data. It ties
+PDLP's primal-weight heuristic ($p=2$): $1.0704\times$ against $1.0704\times$
+of the per-instance oracle on 88 ultrawide netflow instances, $1.1822\times$
+against $1.1829\times$ on 80 fine-grid instances, $1.1984\times$ against
+$1.2020\times$ on 108 wide instances. The fitted exponent (about 1.8) moved
+from 2.00 to 1.80 as grid censoring was removed. Transferred to transport and
+multi-commodity flow, the rule reaches $1.125\times$ of the oracle on 162
+held-out instances against $1.825\times$ for the best fixed ratio. We
+reproduce PDLP's rule; we do not beat it.
+
+\paragraph{Elastic net (LIBSVM).}
+Artifact: \texttt{results/baselines\_20260910/ELASTIC\_NET\_REPORT.md}.
+Coordinate descent with working sets (celer, adelie, glmnet) dominates. A
+full-gradient method loses $13.6\times$ (rcv1) and $18.8\times$ (news20) core
+for core. On the RTX 4090 against one CPU core it ties rcv1 (0.130 s against
+0.137 s), wins news20 by $1.45\times$, and loses about $550\times$ on E2006,
+which must be centered (uncentered, one near-constant feature solves it at
+every regularization value tried). Verdict: a poor target, because the
+in-class state of the art is not first-order.
+
+\subsection{Convex QP against author code (Maros-Meszaros)}
+\label{app:log:qp}
+
+Artifacts: \texttt{results/qp\_20260910/},
+\texttt{scripts/baselines/qp\_headtohead.py}. This is the first comparison
+against solvers written by their authors. Every solver's returned primal and
+dual pair is scored by the same certificate at $10^{-4}$; a baseline whose
+own stopping rule returns a point failing it is rerun with its tolerance
+tightened tenfold, up to three times. OSQP and SCS are first-order (ADMM) and
+in our class; Clarabel is an interior-point method, reported for context.
+Our solver is Condat-Vu (PDHG is rejected by the gate, since the quadratic
+has no cheap prox), float64, cadence 64, capped at $5\times10^4$ iterations,
+with and without the Ruiz rescaling gene, which was extended to QP for this
+comparison (KKT equilibration as in OSQP).
+
+\begin{center}
+\small
+\begin{tabular}{lcc}
+\toprule
+Solver & solved (of 137) & time where both solve, vs OSQP \\
+\midrule
+Clarabel & 132 & \\
+OSQP & 123 & \\
+SCS & 123 & \\
+ours, plain & 55 & $4.47\times$ slower (geometric mean, 55 instances) \\
+ours, Ruiz(10) & 63 & $5.80\times$ slower (geometric mean, 63 instances) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The 14 instances where our solver appears faster than OSQP are, with one
+exception, tiny (the HS family and similar), where our timer excludes
+compilation and OSQP's includes its factorization: timing artefacts. The
+one large instance, BOYD1, where plain Condat-Vu passed the certificate
+faster than OSQP (33.2 s against 182.9 s), is not a solution: its point
+violates rows by up to 9.7 times their own bound and its objective is 84\%
+off (accuracy audit below). It was reported as a win before the audit; that
+claim is retracted. On CONT-200, CONT-201 and
+CONT-300 OSQP and SCS need 900 to 3700 s at the tightened tolerance and
+Clarabel 6 to 8 s, while our solver does not certify within its iteration
+cap. Ruiz rescaling rescues some
+instances (DUALC1) and breaks others (CVXQP1\_S), because it moves the
+implied primal-dual step ratio. What OSQP has and we do not: an adaptive step
+ratio, factorization-based steps, and solution polishing.
+
+\paragraph{Accuracy audit: what a certificate pass means.}
+Artifacts: \texttt{results/qp\_judge\_20260911/},
+\texttt{atlas/certify/residuals.py:qp\_accuracy\_judge}. The KKT certificate
+follows OSQP and divides every residual by one global scale, so on badly
+scaled instances it admits points that are not solutions. Every pass was
+therefore re-judged, for our arms and for the baselines rerun at the exact
+tolerance each needed. Strict: every row violated by at most $10^{-4}$ of its
+own bound and the objective within $10^{-3}$ of Clarabel run to $10^{-9}$
+(trusted where it reports solved, 132 instances). Borderline: violations up
+to $10^{-2}$ with the objective within $10^{-2}$, approximate answers whose
+status depends on the normalization. Gross: a violation above $10^{-2}$ or an
+objective more than $10^{-2}$ off.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Solver & passes judged & strict & borderline & gross & not grossly wrong \\
+\midrule
+Clarabel & 132 & 109 & 14 & 9 & 123 \\
+OSQP & 119 & 51 & 39 & 29 & 90 \\
+ours, Condat-Vu + Anderson & 66 & 36 & 19 & 11 & 55 \\
+ours, Condat-Vu & 55 & 24 & 21 & 10 & 45 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every solver was stopped when this style of certificate reached $10^{-4}$, so
+the table describes what the certificate admits, not what each solver can
+reach with a stricter stop. OSQP, whose own residuals the certificate copies,
+has 29 gross failures (QGROW15, for example, violates a row by 87 times its
+bound). Clarabel's 9 are objective errors on S268, HS268, GOULDQP3 and the
+LISWET family, where a violation of $2\times10^{-4}$ moves the objective by 4 to
+90\% for every solver. The ranking survives the audit, and so does the
+Anderson gain (10 more answers not grossly wrong, 12 more strict; 8 and 10
+after the composer fixes below); the
+certificate-only counts reported above (OSQP 123, ours 55 and 63) overstate
+every solver's accuracy. OSQP's four slow passes (BOYD1, CONT-200, CONT-201,
+CONT-300) were not re-judged. All later QP claims use this judge.
+
+\paragraph{Correction and rerun (2026-09-11, late).}
+The last column of the table above first printed 116, 89, 54 and 44, which is
+not strict plus borderline in any row; recounting from
+\texttt{results/qp\_judge\_20260911/} with the tier definitions above gives 123,
+90, 55 and 45, now in the table. After the two composer defects of
+Section~\ref{app:log:defects} were fixed, both of our arms were rerun on all 137
+instances and re-judged (\texttt{results/qp\_composed\_20260911\_pytree/},
+\texttt{results/qp\_judge\_20260911\_pytree/}). Condat-Vu is unchanged (55 passes;
+24 strict, 21 borderline, 10 gross). Condat-Vu + Anderson passes 64 instead of
+66, losing DTOC3 and PRIMALC2 (dual infeasible as distributed), with 34 strict,
+19 borderline and 11 gross: 53 against 45 answers are not grossly wrong, an
+Anderson gain of 8, and 10 more strict.
+
+\subsection{A knowledge base of classical schemes}
+\label{app:log:kb}
+
+Artifact: \texttt{atlas/kb/schemes.json}. Methods adopted in LP practice
+since 2021 (restarts, Halpern reflection, averaging, primal weights) trace
+back to fixed-point papers from 1950 to 1980 through the monotone-inclusion
+literature. The knowledge base records, for each classical scheme, its
+original paper, update, side condition, guarantee, genome location, gate
+rule, and whether it has already been used in general primal-dual splitting
+and in LP or QP practice (with evidence or the queries that found nothing).
+
+\begin{center}
+\small
+\begin{tabular}{p{2.6cm}p{2.2cm}p{7.6cm}}
+\toprule
+Scheme & Origin & Status and outcome \\
+\midrule
+Krasnoselskii-Mann, Halpern, restarts & 1953 to 1967 & implemented (genome wrapper genes) \\
+Anderson acceleration & 1965 & already used for PDHG on LP (arXiv 2508.08062); not frontier \\
+Passty averaging & 1979 & already used (restarted averaged PDHG, arXiv 2206.03041); not frontier \\
+Haugazeau & 1968 & implemented as an outer wrapper, with the projection evaluated in the PDHG metric; admission-tested. Rejected by measurement on QP: solves 8 and 9 instances against 55 and 63 without it, needs $20.5\times$ and $34.3\times$ more iterations where both solve, and solves nothing new \\
+Bregman (entropic) & 1967 & implemented as an entropic PDHG. The gate admits it only where the constraints imply a simplex (transport), with a size-independent step condition $t s \|A\|_{1\to2}^2<1$, $\|A\|_{1\to2}=\sqrt2$. Needs a dual recovery step; never certified on DOTmark \\
+Solodov-Svaiter & 1999 & frontier, not yet tried \\
+Ishikawa & 1974 & not found in primal-dual practice; not tried \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Features harvested from author code and recorded for implementation as
+combinable genes: an adaptive step ratio (OSQP's adaptive $\rho$, PDLP's
+primal weight), a factorization-based prox for the quadratic (which would
+make PDHG admissible on QP), and polishing (an active-set reduced solve
+accepted only if the certificate improves).
+
+\subsection{Optimal transport on DOTmark}
+\label{app:log:ot}
+
+Artifacts: \texttt{results/ot\_dotmark\_20260910/}. Baseline: POT's exact
+network simplex (\texttt{ot.emd}) on one CPU core, 0.04 to 0.85 s per pair at
+$32\times32$ (about $10^6$ arcs) and 0.8 to 44 s at $64\times64$ (about
+$1.7\times10^7$ arcs).
+
+\begin{itemize}
+\item Execution structure. Writing the transport operator as row and column
+  sums of the plan instead of scatter-adds over arcs (same arithmetic)
+  cuts the RTX 4090's per-iteration time from 243 to 75 microseconds at
+  $32\times32$ and from 6.32 to 1.07 ms at $64\times64$. One CPU core needs
+  15 ms per iteration at $32\times32$ even with the faster form, so the CPU
+  arm was not pursued.
+\item Step ratio. A fixed ratio grid over $[0.03, 30]$, and a wider one, certified
+  nothing in $5\times10^4$ iterations: the plan stayed at zero. With the ratio
+  set from $\omega_0 = \|c\|/\|b\| \approx 8.8\times10^6$, plain PDHG certifies
+  $10^{-4}$ in 5184 iterations. Reflected Halpern restarts did not help; the
+  entropic scheme never certified.
+\item Certificate weakness. The LP certificate normalizes the primal residual
+  by $1+\|b\|$; for probability measures $\|b\|\approx0.01$, so a $10^{-4}$
+  pass is almost an absolute bound and admitted a plan with $4.7\%$
+  objective error. Transport results are therefore judged by relative error
+  against the exact cost.
+\item Head to head. At $32\times32$ and $10^{-6}$ (objective error
+  $5\times10^{-7}$): 3.0 s on the GPU against 0.21 s for POT, $14\times$
+  slower. At $64\times64$ (ClassicImages): 6.2 s against 19.4 s, but with
+  $4.7\%$ objective error, which is not a solution; 20.4 s against 19.4 s at
+  $7\times10^{-4}$ objective error, a tie. No win at matched meaningful
+  accuracy.
+\end{itemize}
+
+\paragraph{Creation loop on transport (corrected composer).}
+On CauchyDensity at resolution 32, pair 1001-1002 (tolerance $10^{-6}$, primal
+weight $\omega_0/30$, one Blackwell GPU), the gates admit 19 of 48 compositions
+of PDHG. Plain PDHG certifies in 69,248 evaluations and 4.27 s. The best
+composition is reflected Halpern with a fixed restart every 512 steps: 61,440
+evaluations and 3.90 s, $1.13\times$ fewer evaluations and $1.10\times$ faster.
+With a restart every 64 steps it is roughly neutral; residual-triggered restarts
+cost more evaluations or fail, and unanchored Halpern and Anderson acceleration
+reach the cap of $10^5$ evaluations. A first run of this loop reported the
+residual-triggered recipes as $12\times$ faster than plain PDHG; that was an
+execution artifact of the composer (Section~\ref{app:log:defects}), not a
+property of the recipes.
+
+\subsection{Certified adaptive step ratio (measured 2026-09-11)}
+\label{app:log:adaptive}
+
+Artifacts: \texttt{atlas/backend/adaptive.py}, \texttt{results/adaptive\_20260911/}.
+PDHG and Condat-Vu are proximal steps in the metric
+$M = [[I/t, -L^\top], [-L, I/s]]$, so changing the primal weight
+$\omega = \sqrt{s/t}$ changes the metric. With $\theta = \sqrt{ts}\,\|L\| < 1$,
+$M \succeq (1-\theta)D$ for its block diagonal $D$, so a move from $(t,s)$ to
+$(t',s')$ satisfies $M' \preceq (1+\eta)M$ with
+$\eta = \max(0, t/t'-1, s/s'-1)/(1-\theta)$ (checked numerically over 200
+random moves). The controller applies PDLP's primal-weight update every 512
+iterations, places every $(t,s)$ on the gate boundary, and stops adapting
+once $\sum\eta$ reaches a declared budget, which keeps the variable metric
+convergence theorem of Combettes and V\~u in force. The comparison arm runs
+through the same runner with the controller off.
+
+\paragraph{QP (Maros-Meszaros, 137 instances, CPU, tolerance $10^{-4}$).}
+With Ruiz rescaling the adaptive ratio passes the certificate on 73
+instances against 65 with the fixed ratio (15 gained, 7 lost); where both
+pass it needs $0.53\times$ the iterations (geometric mean; fewer on 35 of 58).
+Without rescaling: 62 against 55 (9 gained, 2 lost), $0.50\times$ the
+iterations. The budget froze 8 runs; the median run made 30 updates. Under the
+accuracy audit (Section~\ref{app:log:qp}) the gain survives: with Ruiz
+rescaling 59 against 50 answers are not grossly wrong (33 against 25 strict),
+and without rescaling 53 (25 strict). That makes it our best QP arm, ahead of
+Condat-Vu with Anderson (54), but OSQP has 89 such answers and Clarabel 116,
+and where both pass the certificate it remains $7.8\times$ slower than OSQP. A
+real gain inside the method, not a win.
+
+\paragraph{Optimal transport (DOTmark $32\times32$, 31 pairs, RTX 4090, tolerance $10^{-6}$).}
+Started at PDLP's initial weight $\omega_0 = \|c\|/\|b\|$, neither the fixed nor
+the adaptive ratio certifies any pair within $10^5$ iterations, although
+adaptation cuts the median objective error from $2.7\times10^{-2}$ to
+$1.1\times10^{-3}$; it moves the ratio at every epoch and never settles. The
+fixed ratio $\omega_0/30$ calibrated on a held-out pair certifies 29 of 31, a
+median $19\times$ slower than POT (best $4.7\times$). At $64\times64$ nothing
+certifies within $10^5$ iterations (105 s against 39 to 47 s for POT). On
+transport, adaptation does not replace calibration.
+Adapting for a bounded number of updates and then freezing (epochs of 2048
+iterations) does not rescue it: at most 10 updates from $\omega_0$ certifies 5
+of 31 pairs, at most 30 updates certifies 12, and 10 updates started from the
+calibrated ratio certifies 6, against 29 for the calibrated fixed ratio. The
+runs that do certify are faster (a median 11.7 to $14\times$ POT against
+$21.6\times$), so the rule helps when it lands, but it does not land reliably.
+
+\subsection{Elastic-net logistic regression (in progress, 2026-09-11)}
+\label{app:log:logreg}
+
+Proposed by N.~Devanathan: elastic-net logistic regression on epsilon (dense,
+$4\times10^5\times2000$), rcv1 (sparse), Tabula Sapiens (1.1M cells) and
+ogbg-molpcba (437,929 molecules, 128 assays, multitask), against cuML's GPU
+quasi-Newton (OWL-QN), skglm, and glmnet-style adelie. Two items to add in
+order: fixed diagonal preconditioning followed by adaptation, and
+certificate-driven structure reduction by safe screening. The possibility
+the user singled out is that screening shrinks the problem mid-solve until
+the best device flips (GPU first, CPU afterwards), which no existing solver
+does automatically.
+
+Built so far. Atoms for the logistic loss ($L_f = \|X\|_2^2/(4n)$) and the
+elastic-net penalty (scaled soft threshold). The certificate is the relative
+duality gap at the dual point $u = \nabla F(Xw)$; for $\alpha<1$ the penalty's
+conjugate is smooth, for $\alpha=1$ the point is rescaled into dual
+feasibility. FISTA with O'Donoghue--Cand\`es gradient restart is a new scheme
+with gate $0 < a \le 1/L$ and an independent reference in the equivalence
+battery. Gap Safe screening (Ndiaye, Fercoq, Gramfort and Salmon, 2017)
+uses the radius $\sqrt{\mathrm{gap}/(2n)}$, since the dual is $4n$-strongly
+concave (the binary-entropy term has curvature at least 4).
+
+Defect caught. For $\alpha=1$ the bare strict screening test discarded two
+active features at an exactly converged point: active features sit on
+$|x_j^\top u^\star| = \lambda$, and the rescaling into dual feasibility can leave
+them one rounding step below $\lambda$. A relative margin of $10^{-9}$ fixes it;
+the safety test (no screened feature nonzero at a $10^{-12}$-accurate optimum)
+passes for $\alpha \in \{0.5, 0.9, 1\}$.
+
+Baseline check. On synthetic data every baseline certifies the same
+objective under our gap: cuML with $C = 1/(n\lambda)$ reaches $2\times10^{-15}$,
+confirming the mapping; skglm, scikit-learn saga and adelie also pass.
+Baselines run in isolated environments on both machines. The training file
+of epsilon is being resumed after a truncated first download.
+
+\paragraph{First head-to-head (epsilon test split, real data).}
+$n=10^5$, $p=2000$, $\alpha=0.5$, $\lambda=0.1\lambda_{\max}$, target relative duality
+gap $10^{-6}$ on our certificate; GPU runs on the RTX 4090, CPU baselines on
+one core. Artifacts: \texttt{results/logreg\_20260911/}.
+
+\begin{center}
+\small
+\begin{tabular}{llrrl}
+\toprule
+Solver & device & seconds & iterations & gap \\
+\midrule
+cuML (OWL-QN, float32) & 4090 & 0.183 & 35 & $2.2\times10^{-7}$ \\
+ours, FISTA (float64) & 4090 & 0.668 & 192 & $6.3\times10^{-9}$ \\
+ours, FISTA (float32 iterates, float64 certificate) & 4090 & 0.722 & 192 & $5.9\times10^{-9}$ \\
+ours, forward-backward & 4090 & 4.88 & 1408 & $7.0\times10^{-7}$ \\
+adelie (30-point path) & 1 core & 9.05 & & $2.2\times10^{-8}$ \\
+scikit-learn saga & 1 core & 21.8 & & $8.5\times10^{-11}$ \\
+skglm (tolerance tightened to $10^{-6}$) & 1 core & 59.2 & & $3.5\times10^{-8}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+FISTA on the GPU is $13.5\times$ faster than the fastest single-core baseline,
+which is not a like-for-like hardware comparison. On the same GPU, cuML is
+$3.7\times$ faster than our FISTA. Float32 iterates buy nothing (0.722 s against
+0.668 s). The iteration is expected to be memory bound, since the design is
+1.6 GB in float64 and is read twice per step (for $Xw$ and for $X^\top(\cdot)$);
+a fused single-pass gradient kernel that reads each row block once for both
+products is the natural next step. The first cuML attempt ran out of GPU
+memory because our process still held the data next to the language-model
+server; it was rerun alone.
+
+\paragraph{Diagnosis: where the step's time goes (RTX 4090, epsilon test split).}
+Artifacts: \texttt{results/logreg\_20260911/bandwidth\_*.json}. In float64 the
+step is memory bound at about 90\% of peak bandwidth: $Xw$ takes 1.74 ms (918
+GB/s), $X^\top v$ 1.84 ms (871 GB/s), and the gradient 3.52 ms, two full reads
+of $X$, which is essentially the whole measured FISTA iteration (3.48 ms). In
+float32, $Xw$ is bandwidth bound and twice as fast (0.89 ms), but $X^\top v$
+runs at only 298 GB/s (2.70 ms), so the float32 gradient is no faster than
+the float64 one. Storing $X^\top$ explicitly, or writing the product as $vX$,
+changes nothing (294 to 296 GB/s): the loss is the library kernel XLA selects
+for this shape (2000 outputs, each a sum of $10^5$ terms), not the memory
+layout. Mixed precision therefore pays only with a kernel that reaches full
+bandwidth on the transposed product; a fused single pass in float32 would
+cost about 0.9 ms per gradient, four times less than float64, and bfloat16
+storage would halve that again. Low-precision data changes the problem, so
+reaching a $10^{-6}$ gap on the true problem needs a precision schedule that
+returns to float64 gradients as the gap closes; the certificate stays float64
+throughout.
+
+\paragraph{The predicted remedy was wrong, and no kernel was needed (2026-09-13).}
+The paragraph above proposes a fused single-pass gradient kernel. No such kernel
+can exist: the transposed product consumes a vector that depends on the result
+of the forward product, so no single pass over the design can produce both. The
+diagnosis of the cause was also wrong. Layout is not the problem, as that
+paragraph already half-observed: $vX$, an einsum, and an explicitly materialized
+transpose all land within a per cent of each other. But the same float32 data
+accumulated in float64 runs twice as fast, which places the loss in the
+accumulation over the length $10^5$ reduction rather than in the traffic or the
+pass structure. Four ways of writing the same product, measured on the $10^5
+\times 2000$ design:
+
+\begin{center}
+\small
+\begin{tabular}{lrrl}
+\toprule
+Form & ms & GB/s & relative error \\
+\midrule
+$X^\top v$, as shipped & 2.589 & 309 & $2.9\times10^{-4}$ \\
+contracting with a float64 accumulator & 1.417 & 564 & $1.0\times10^{-14}$ \\
+reduction split into 16 chunks & 0.844 & 948 & $2.9\times10^{-4}$ \\
+row sum of the elementwise product & 0.858 & 932 & $1.2\times10^{-7}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The form we shipped is dominated on both axes at once: it is three times slower
+than the third row and no more accurate. The last row is what the solver now
+uses in float32. It reaches the same bandwidth as the forward product, it
+materializes no intermediate (0.858 ms for 0.80 GB; materializing would cost
+about 2.4 ms), it places no divisibility condition on the sample count, and it
+is more accurate than the alternative of equal speed by a factor of $2400$,
+which matters because the certificate is float64. Float64 keeps the direct form,
+being already at $90\%$ of peak.
+
+End to end on the working-set configuration at $\alpha=0.5$ and
+$\lambda=0.1\lambda_{\max}$, float32 falls from $0.0564$ s to $0.0467$ s, a
+factor of $1.21$, at an unchanged 64 evaluations and an equivalent certified
+gap, so the gain is entirely in cost per iteration. Float32 now beats float64
+($0.0606$ s) by $1.30\times$, where before it did not, which revises the earlier
+row of this section reporting that float32 iterates buy nothing: that row is a
+full-width plain FISTA configuration and it stands as measured, but the
+conclusion drawn from it does not generalize. The realized $1.21\times$ is
+smaller than the $3.07\times$ on the isolated product because the solver runs on
+a working set of 125 to 500 columns rather than all 2000. The revised prediction
+for a saturated float32 gradient is a factor of two over float64, not the factor
+of four predicted above, because two passes over the design are unavoidable.
+This is one device. The second machine could not be used to check it, its CUDA
+installation being broken pending a reboot.
+
+\paragraph{Full training set (epsilon, $4\times10^5$ samples, Blackwell GPU).}
+The training split does not fit next to the language-model server on the
+RTX 4090 in float64, so it ran on one RTX PRO 6000 Blackwell GPU with the same
+settings ($\alpha=0.5$, $\lambda=0.1\lambda_{\max}$, target gap $10^{-6}$ on our
+certificate); CPU baselines on one core. Artifacts:
+\texttt{results/logreg\_20260911/bw\_epsilon\_train\_*}.
+
+\begin{center}
+\small
+\begin{tabular}{llrrl}
+\toprule
+Solver & device & seconds & iterations & gap \\
+\midrule
+cuML (OWL-QN, float32) & Blackwell & 0.755 & 37 & $3.0\times10^{-7}$ \\
+ours, FISTA (float64) & Blackwell & 1.53 & 192 & $6.7\times10^{-9}$ \\
+ours, forward-backward & Blackwell & 11.2 & 1408 & $7.3\times10^{-7}$ \\
+adelie (30-point path) & 1 core & 39.0 & & $5.4\times10^{-8}$ \\
+scikit-learn saga & 1 core & 99.2 & & $1.7\times10^{-10}$ \\
+skglm (tolerance tightened to $10^{-6}$) & 1 core & 247.9 & & $8.5\times10^{-9}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+On the same GPU cuML is $2.0\times$ faster than our FISTA (against $3.7\times$ on
+the test split on the 4090). Our FISTA is $25\times$ faster than the fastest
+single-core baseline, which is not a like-for-like hardware comparison. The
+logistic certificate is the relative duality gap, which a diverging iterate
+cannot pass, so these passes do not share the weakness found in the QP
+certificate.
+
+\paragraph{Correction: the step size was not timed.}
+FISTA and forward-backward need a Lipschitz constant $L$ of the gradient. In
+every row above, and in the creation-loop rows of
+Section~\ref{app:log:kbloop}, it was computed before the timer started, by 100
+power iterations on the host (200 passes over $X$), while each baseline's time
+includes all of its own setup. With $L$ computed on the GPU inside the timed
+region (30 power iterations), FISTA takes 0.775 s instead of 0.671 s on the
+4090 test split and 1.775 s instead of 1.536 s on the Blackwell training split.
+Every row from here on times the step size.
+
+\subsection{The knowledge-base creation loop (2026-09-11)}
+\label{app:log:kbloop}
+
+Artifacts: \texttt{atlas/evolve/kb\_composer.py}, \texttt{scripts/discovery/kb\_loop.py},
+\texttt{results/kb\_loop\_20260911/}. Restarted reflected Halpern PDHG was reached
+by transferring general operator ideas (Halpern's anchor, then restarts, then
+reflection) to one averaged operator, PDHG. The loop automates that route for
+another averaged operator, forward-backward ($\alpha = 2/(4-aL)$ for $a<2/L$),
+on elastic-net logistic regression. Ingredients come from the knowledge base:
+Krasnoselskii-Mann relaxation, Halpern anchoring, fixed and residual-triggered
+restarts, reflection under the anchor, safeguarded Anderson acceleration, and
+FISTA momentum as a separate base. Two gate rules were added for this:
+residual-triggered restart of the anchor (sound because Halpern's residual
+bound forces every segment to end) and Anderson acceleration with the
+Zhang, O'Donoghue and Boyd safeguard.
+
+The composer enumerates 97 compositions; the gates reject 58 before anything
+runs (for example relaxation beyond $1/\alpha$ without an anchor, momentum
+combined with an anchor, two outer extrapolations together) and admit 39,
+each run to the certified duality gap. Plain and anchored recipes reproduce
+the existing runners exactly (same evaluation counts and iterates), which
+validates the composer.
+
+Novelty is checked against the knowledge base's evidence for sparse
+generalized-linear-model practice, and the check mostly came back negative:
+Anderson acceleration of proximal gradient on logistic regression is
+published (Mai and Johansson, ICML 2020), a Halpern anchor has been used on
+LASSO (Numerical Algorithms, 2026), and restarting FISTA on such problems is
+standard. The only ingredient recorded as unused in that practice, on two
+searches, is a periodic restart of a Halpern anchor on forward-backward. A
+related June 2026 preprint applies restarted reflected Halpern acceleration
+to augmented primal-dual methods (arXiv 2606.16552).
+
+The composer is generic over base operators: every wrapper acts on the
+operator's state as a pytree of arrays, so it applies unchanged to forward-backward, FISTA,
+PDHG, Condat-Vu, Douglas-Rachford and Davis-Yin, and it reproduces the policy
+runner exactly on forward-backward, on Condat-Vu with a restarted anchor for a
+real QP, and on PDHG for a transport LP. On the QP instance AUG3DCQP the gates
+choose Condat-Vu as the base (19 admitted, 29 rejected) and the loop transfers
+Anderson acceleration to it without any QP-specific code: 257 evaluations and
+0.030 s against 6400 and 0.179 s for plain Condat-Vu, to a certified $10^{-6}$
+KKT residual (both times were measured before the flattening defect of
+Section~\ref{app:log:defects} was fixed; the evaluation counts are unaffected). The restarted Halpern chain behind restarted Halpern PDLP loses
+there (12,500 to 19,000 evaluations), so that chain is not universally
+beneficial. Anderson is recorded as already used in QP practice (SCS uses it),
+so this is an automatic rediscovery, not a new algorithm. Family-wide, Condat-Vu + Anderson passes the
+certificate on 66 of 137 instances against 55 for plain Condat-Vu; under the
+accuracy audit (Section~\ref{app:log:qp}) 55 against 45 are not grossly
+wrong; after the composer fixes the rerun gives 64 against 55 passes and 53
+against 45 not grossly wrong (Section~\ref{app:log:qp}).
+
+On the epsilon test split at a $10^{-8}$ gap (RTX 4090, after the Anderson accounting fix)
+the gates admit 39 of 97 compositions; 33 reach the certificate and 6 hit the cap of
+20,000 evaluations, all six unrestarted Halpern anchors, whose $O(1/N)$ rate is too slow
+for this accuracy. Plain FISTA is fastest (192 evaluations, 0.947 s). The best
+composition on forward-backward uses the step $1.9/L$ (1088 evaluations, 3.90 s, with or
+without relaxation); Anderson acceleration lowers the evaluations to 641 to 705 but not
+the time (4.8 to 5.0 s); restarted Halpern anchors need 2176 to 2304 evaluations (7.7 to
+8.1 s). No composition of these ingredients beats FISTA on this instance: the transfer
+route that produced restarted Halpern PDHG finds nothing here.
+
+For the proof-check stage, the performance-estimation package PEPit is
+installed in an isolated environment and reproduces the Halpern worst case
+exactly ($\|x_N - T x_N\|^2 \le 0.0330579\,\|x_0 - x^\star\|^2$ at $N = 10$); its
+fixed-point, monotone-inclusion and composite families are the starting point
+for checking a transferred composition before it runs.
+
+That check is now part of the loop (\texttt{atlas/evolve/pep\_check.py}).
+A fixed-coefficient recipe on an $\alpha$-averaged base, $T = (1-\alpha)I + \alpha N$
+with $N$ nonexpansive, relaxed by $\rho$ and iterated plainly or with the
+Halpern anchor, becomes a performance-estimation problem whose value is the
+worst case of $\|x_N - T x_N\|^2$ over the whole operator class. It reproduces
+Halpern's bound $(2/11)^2$ at $N=10$, and it agrees with the gates without being
+told what they decided: reflection without an anchor ($\rho\alpha = 1$), which the
+gate rejects, shows no worst-case decay from $N=10$ to $N=20$, while strict
+relaxation and reflection under the anchor, which the gate admits, contract.
+The gate and this analysis are two independent derivations of the same
+admissibility, one symbolic and one numerical. Restarts and Anderson
+acceleration have iterate-dependent coefficients, so they are not
+fixed-coefficient problems and are left to the certified runs.
+
+\subsection{Diagnose, mutate, re-run: closing the gap to cuML (2026-09-11)}
+\label{app:log:diagnose}
+
+Artifacts: \texttt{atlas/evolve/diagnose.py}, \texttt{atlas/evolve/screened\_runner.py},
+\texttt{scripts/discovery/diagnose\_loop\_logreg.py},
+\texttt{scripts/discovery/logreg\_screen\_gpu.py}, \texttt{results/logreg\_20260911/screen/}.
+The composition loop of Section~\ref{app:log:kbloop} found nothing that beats
+FISTA on epsilon, so a diagnosis stage was added in front of it. It splits the
+gap to the baseline into the two factors of $T = N \times t$ and turns
+measurements into symptoms, each mapped to knowledge-base ingredients that act
+on one factor:
+\begin{itemize}
+\item the solution is sparse (197 of 2000 features) but every step reads all
+  columns: Gap Safe screening with mid-solve re-planning (acts on $t$);
+\item the step is memory bound (about 90\% of peak bandwidth in float64):
+  float32 storage, or a fused gradient kernel where the float32 transposed
+  product is slow, as on the 4090 but not on the Blackwell (acts on $t$);
+\item the baseline needs far fewer iterations (37 against 192): variable
+  metric, Anderson acceleration, a quasi-Newton metric (acts on $N$). Anderson
+  and the Halpern anchor are now reachable, by routing the configuration to the
+  composition engine of Section~\ref{app:log:kbloop}, and both were tried and
+  beaten on measurement; the quasi-Newton metric and the fused kernel remain
+  unimplemented.
+\end{itemize}
+Further rules compare a run with the run it was mutated from: a re-plan that
+restarts FISTA's momentum (keep it); exact-size re-plans that compile a new
+shape inside the solve (pad to halving buckets compiled from $(n, p)$ alone);
+iteration counts rounded up to the certificate cadence (halve $K$); safe
+screening that cannot act until the gap is small (start from a working set
+ranked by dual scores and let the full-problem certificate add violators, the
+approach of celer and skglm); and, on a working set, the exact Lipschitz
+constant of the selected columns in place of power iteration. The search is a
+beam of width two over single mutations, so a step that pays only after the
+next one (screening, before its re-planning costs are fixed) is not discarded;
+a first greedy version stopped at 0.500 s for exactly that reason. The
+reported chain is the ancestry of the best configuration. Every certificate is
+the full-problem duality gap, so no mutation changes what is certified, only how
+fast it is reached.
+
+Epsilon test split on the RTX 4090, target gap $10^{-6}$, medians of five
+solves after an untimed warm-up, step size timed:
+
+\begin{center}
+\small
+\begin{tabular}{lrrl}
+\toprule
+Configuration & seconds & evaluations & gap \\
+\midrule
+FISTA, $K=64$ & 0.775 & 192 & $6.3\times10^{-9}$ \\
+FISTA, $K=16$ & 0.642 & 144 & $9.0\times10^{-7}$ \\
+\quad + Gap Safe screening, momentum kept, buckets & 0.456 & 96 & $5.5\times10^{-7}$ \\
+\quad + working set from $p/16$ columns & 0.081 & 48 & $1.0\times10^{-9}$ \\
+\quad + certificate every 32 steps, exact step on the working set & 0.067 & 64 & $9.4\times10^{-7}$ \\
+cuML (OWL-QN, float32), same GPU, eight runs & 0.166 to 0.295 & 35 to 39 & $1.6$ to $4.6\times10^{-7}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The median of the last five cuML runs on the 4090 is 0.227 s; one of them
+needed a tolerance of $10^{-7}$ to reach the target. On the Blackwell training
+split (one RTX PRO 6000 GPU; cuML alone on an identical GPU, and five times on
+the same GPU) the rows read: FISTA 1.775 s, screening 1.026 s (96 evaluations),
+working set 0.176 s (48 evaluations, gap $9.5\times10^{-10}$), and 0.142 s with
+the certificate every 32 steps and the exact step. cuML took 0.482 to 0.636 s
+after a cold first run of 1.32 s (median 0.615 s, 34 to 43 iterations), and two
+of the five runs needed a tolerance tighter than $10^{-4}$ to reach the target.
+So with nothing excluded but compilation, the best configuration found by hand
+is $2.5\times$ faster than cuML's fastest run on the 4090 and $3.4\times$ on the
+Blackwell ($3.4\times$ and $4.3\times$ against cuML's medians); the loop's own best
+configurations, below, are $3.0\times$ and $3.7\times$ faster than cuML's fastest runs
+($4.1\times$ and $4.7\times$ against the medians).
+
+Where the speed comes from: the working set changes both factors. Early steps
+read 125 to 250 columns instead of 2000, which is $t$; and the Lipschitz
+constant of those columns is 0.0017 to 0.0031 against 0.089 for all of $X$ (a
+strong common direction dominates the full spectrum), so the step is 30 to 50
+times larger and the certificate is reached in 48 evaluations instead of 144,
+which is $N$. Safe screening alone reaches only 96 evaluations because it
+cannot act before evaluation 80.
+
+What the loop found by itself: on the 4090, in its first version (with $L$
+still computed outside the timer), the beam search from plain FISTA at $K=64$
+reached $K=32$ with screening, a working set, buckets, float32 storage and
+kept momentum, 0.127 s against cuML's 0.166 s. On the Blackwell, with the step
+size timed, it reached the working set in its third round (0.333 s, then 0.232 s
+at $K=32$, against 0.571 s). With the step size timed, the 4090 loop took screening, the working set,
+$K=32$ and float32 storage, 0.102 s ($1.6\times$ cuML's fastest run), and the
+Blackwell loop stopped at 0.232 s; both fell short of the best configuration
+found by hand. The shortfall was traced to a gene no rule could move, the size
+of the first working set, which held 250 columns for a solution with 197
+nonzeros. A rule was added that halves it when it already holds the final
+support. The Blackwell rerun then went, unaided, from 1.777 s through screening
+(1.518 s), the working set (0.333 s), the smaller first set (0.191 s), $K=32$
+(0.141 s) and float32 storage (0.132 s): ahead of the configuration found by
+hand, and $3.7\times$ faster than cuML's fastest run on the same GPU model. The
+4090 rerun with the new rule went from 0.777 s through screening (0.713 s), the
+working set (0.148 s), the smaller first set (0.086 s), $K=32$ (0.063 s), float32
+storage (0.059 s) and kept momentum (0.056 s), also ahead of the configuration
+found by hand (0.067 s): $3.0\times$ faster than cuML's fastest run on the same GPU
+and $4.1\times$ faster than its median. This is the harness evolving from
+its own failures, the pattern CAKE (arXiv 2608.12629) applies to kernel agents,
+where recurring failures become verifier rules.
+
+\paragraph{Guided against blind mutation (Blackwell, epsilon training split).}
+Artifacts: \texttt{scripts/discovery/ablation\_guided\_vs\_blind.py},
+\texttt{results/ablation\_20260911/}. Both arms search the same eight genes
+(certificate cadence $K$, screening, momentum on re-planning, buckets, working
+set, size of the first working set, step rule, precision) from the same start
+(FISTA, $K=64$, power-iteration step), with the same beam of two, the same
+certificate and the same budget of 24 evaluated configurations. The guided arm
+takes its mutations from the diagnosis rules; the blind arm takes four random
+single-gene changes per expanded configuration and sees only certified wall
+time. Three seeds, one per GPU; medians [min, max] of the best certified time
+(cuML 0.571 s): after 8 configurations, guided 0.802 s [0.801, 0.805] and blind
+1.207 s [0.910, 1.239]; after 16, 0.190 s [0.186, 0.192] and 0.192 s [0.140,
+0.782]; after 24, 0.140 s [0.136, 0.145] and 0.141 s [0.140, 0.248].
+
+On this small space the diagnosis does not reach a better endpoint: one gene
+(the working set) carries most of the gain, and random single-gene changes find
+it within 24 configurations in two of three seeds. What the diagnosis buys here
+is reliability and early progress: its three runs agree to within 7\%, while the
+blind runs span 0.14 to 0.78 s at 16 configurations and one ends at 0.248 s. The
+stronger evidence for the diagnosis lies before this ablation: the timing-only
+composition loop of Section~\ref{app:log:kbloop} searched a space without
+screening or working sets and found nothing that beats FISTA, and those
+ingredients entered the search space only because the diagnosis named the
+sparse solution and the gap-limited screening as the bottleneck. On the RTX 4090
+(epsilon test split, cuML 0.166 s, three seeds run in sequence) the pattern
+repeats: after 16 configurations guided 0.087 s [0.086, 0.087] and blind
+0.150 s [0.065, 0.469]; after 24, guided 0.064 s in all three seeds and blind
+0.065 s [0.064, 0.119]. On both devices the diagnosis gives the same endpoint
+as a lucky blind run, every time; the blind search gives it in two runs of three.
+
+Does the diagnosis matter more when the space a blind search must cover is
+larger? The blind arm was rerun on the 4090 with a larger space of real solver
+settings (six cadences and six first-set sizes instead of four, plus the number
+of power iterations, the screening threshold, and FISTA against
+forward-backward); the guided arm is unchanged, because its rules never propose
+those genes. Three seeds, best certified time after 16 configurations: blind
+0.149 s [0.135, 0.651] against 0.150 s on the small space; after 24, blind 0.087 s
+[0.063, 0.119] against 0.065 s on the small space and 0.064 s for the guided arm.
+The blind median gets worse as the space grows ($1.36\times$ the guided time after
+24 configurations) while one blind seed still finds the best configuration. With
+three seeds this is a trend, not a firm result.
+
+Three more seeds on the 4090 (six in all, each running all three arms) firm up
+one conclusion and soften another. After 24 configurations the medians are
+guided 0.065 s [0.064, 0.066], blind 0.077 s [0.064, 0.119] on the small space and
+0.080 s [0.059, 0.119] on the large one; after 16, 0.086 s [0.086, 0.093], 0.099 s
+[0.065, 0.469] and 0.142 s [0.078, 0.651]. The guided arm comes within 5\% of
+0.064 s in 6 of 6 seeds, each blind arm in 2 of 6: the diagnosis makes the search
+reliable. The larger space hurts the blind search clearly after 16
+configurations and only slightly after 24, so the effect of space size is not
+established. One blind seed on the large space beat every guided run: 0.059 s in
+32 evaluations, from a finer cadence ($K=8$) and a cheaper step estimate (10 power
+iterations instead of 30) on the working set. No rule proposed either change: the
+cadence rule stopped at $K=32$ and no rule touched the number of power
+iterations. Two rules were added for these, again a failure of the loop turned
+into a rule, and the guided arm was rerun (six seeds each): with the rules as
+first written (a condition error kept the cadence rule from ever firing), fixed,
+and fixed with the guided arm limited to four proposals per expanded
+configuration, rules for the dominant factor of $T=N\times t$ first. None moved the
+median after 24 configurations (0.0660, 0.0648 and 0.0648 s against 0.0647 s), and
+the 0.059 s configuration was reached at most once. A direct timing (ten
+interleaved solves per configuration) shows why and settles whether the blind
+result was noise. The guided best takes 0.0667 s [0.0633, 0.0718]; the blind best
+0.0568 s [0.0528, 0.0686], a real gain; the guided best with only the cheaper step
+estimate 0.0492 s [0.0468, 0.0534], the fastest configuration found so far
+($3.4\times$ cuML's fastest run on this GPU); and the guided best with only the finer
+cadence 0.0891 s [0.0821, 0.0978], worse. So the step-estimate rule is right and
+points directly at the best configuration, but within 24 evaluations the guided
+search spends its budget on the other proposals before it reaches it, while the
+cadence rule is wrong and has been removed. Raising the budget to 32 configurations (six seeds,
+step-estimate rule kept, cadence rule removed) leaves the median at 0.0649 s
+[0.0629, 0.0662] and reaches the fastest configuration in no seed, and the records
+show exactly why: on every seed the search first reaches the configuration it
+must extend (the working set started at $p/16$ with $K=32$) at evaluation 21, and
+expands it only in the last round, where the rules propose keeping momentum
+(evaluation 30), a finer cadence (evaluation 31) and then the cheaper step
+estimate, one evaluation past the budget. The search is deterministic apart from
+timing noise, so the miss is structural: the rule is right, the order in which a
+node's proposals are tried is not. Each new rule makes a fixed budget
+thinner; ranking proposals by a calibrated prediction of their gain, the role of
+CAKE's cost model, is the missing piece. Neither rule was used in the
+generalization stage below, whose tuning procedure was fixed before they existed.
+
+Caveats. Working sets with dual-score selection are published practice (celer,
+skglm, Blitz), so that part is an automatic rediscovery of known structure
+exploitation, not a new algorithm; what is new is that the chain was derived
+from measurements, per device, with the certificate unchanged. The ablation
+below separates the ingredients, and the one carrying the speedup is not the
+working set itself but the step taken from the Lipschitz constant of the
+current working set, which that literature does not do: it is almost entirely
+coordinate descent, where the step is per feature and computed once on the
+whole matrix, so a restricted constant changes nothing there. Ours runs in
+float64, cuML in float32. Compilation (2.7 to 3.9 s) depends only on $(n, p)$
+and is excluded here, as is cuML's warm-up solve. That exclusion was misleading
+when these rows were measured, because the programs were rebuilt on every call
+and so the cost was paid on every solve; since 2026-09-13 they are reused across
+calls and across penalty weights, so a repeated solve and a path both pay it
+once, and a first solve still pays it in full. cuML's time varied between runs of the same solve,
+and the comparison uses its fastest. At looser tolerances cuML does not reach
+the target (gap 0.32 at $10^{-2}$, $9\times10^{-3}$ at $10^{-3}$), so $10^{-4}$ is its
+fastest passing setting. These rows are one instance at one penalty weight; the
+ablation and the held-out stage below extend the comparison to six and ten.
+
+\paragraph{Baseline precision.}
+Our worker first ran cuML in float32 only (it cast the data before fitting). On
+harder instances float32 cannot reach the target: on the epsilon test split at
+$\alpha=0.9$, $\lambda=0.02\lambda_{\max}$ its gap stays at $1.4\times10^{-5}$ or
+above for every tolerance from $10^{-4}$ to $10^{-8}$, and at $\alpha=0.5$,
+$\lambda=0.02\lambda_{\max}$ at $1.4\times10^{-6}$ or above, while cuML in float64
+certifies both (1.414 s, 317 iterations; 0.567 s, 127 iterations). On the
+instance of the table above both precisions pass, float64 in 0.211 s in one
+run, slower than float32's fastest (0.166 s), so the comparisons above stand. The
+worker now takes the precision as an option, and every later comparison uses,
+per instance, the faster of the two precisions that reaches the target. Counting
+an instance where float32 fails as a win would reward our float64 arithmetic,
+not our method.
+
+\paragraph{The loop run end to end (2026-09-13).}
+Artifact: \texttt{results/ws\_fista\_20260913b/operator\_chain4.json}. Starting from
+plain forward-backward with Nesterov momentum on the epsilon test split at
+$\alpha=0.5$, $\lambda=0.1\lambda_{\max}$, which loses to cuML by $4.8\times$
+($0.770$ s against $0.159$ s), the search reached $0.059$ s in four diagnosed
+steps: screening ($0.590$ s), a working set ($0.144$ s), a smaller initial
+working set ($0.081$ s), and a halved certificate cadence ($0.059$ s). That is
+$2.67\times$ faster than the baseline it started behind. Each step is one
+symptom mapped to one typed mutation, and the certificate is the full-problem
+duality gap throughout, so nothing in the chain changes what is being certified.
+The operator ingredients were proposed, admitted by the gate, run, and rejected
+on measurement rather than by assumption: the anchored iteration could not
+certify within twenty times the incumbent's iteration count and was stopped
+there, and safeguarded Anderson was slower by a factor of fifty. On this cell
+the gain is entirely on the screening axis.
+
+Bounding the search was necessary and is worth recording, because two earlier
+attempts at the same run exhausted their time budget. A step that loses badly is
+followed once and then neither re-proposed from other parents nor expanded into
+its own descendants, and a composed recipe is cut off once it exceeds twenty
+times the best certified iteration count, which is a competitiveness bound
+rather than a convergence claim. An earlier attempt also stopped one step short,
+at $1.93\times$, for a reason that was our instrument and not the method: several
+candidates in the last round failed for want of device memory, and those
+failures were recorded as slow configurations rather than as failures to
+measure. Distinguishing the two did not merely correct the record, it let the
+search find the cadence step and a configuration $1.4\times$ faster than the one
+it had settled for.
+
+\subsection{Isolating the ingredients (2026-09-13)}
+\label{app:log:ablation}
+
+Artifacts: \texttt{scripts/discovery/ws\_fista\_ablation.py},
+\texttt{results/ws\_fista\_20260913c/}. The chain above mixes several changes, so
+this stage varies one at a time. Ten instances of the epsilon test split,
+$\alpha \in \{0.5, 0.9\}$ and $\lambda/\lambda_{\max} \in \{0.02, 0.05, 0.1, 0.2,
+0.5\}$, five arms, seven repetitions each. The repetitions are interleaved, so
+that repetition $k$ of every arm runs next to repetition $k$ of the others:
+pairing arms by repetition index means nothing when each arm's repetitions run
+in one block minutes apart, which is how an earlier version of this experiment
+was arranged, and the paired intervals below are reported only because the
+interleaved design earns them.
+
+The arms are plain forward-backward with momentum; a working set whose step
+comes from the Lipschitz constant of the whole matrix, with momentum either
+reset or carried across changes of the set; and a working set whose step comes
+from the Lipschitz constant of the current set, again with momentum reset or
+carried. Three times are reported separately throughout, because they are
+three different claims: the solve loop, a repeated solve (the loop plus
+compilation, with compiled programs reused), and a first solve on an empty
+cache.
+
+\begin{center}
+\small
+\begin{tabular}{lcc}
+\toprule
+Contrast & geometric mean & $95\%$ interval \\
+\midrule
+reduced-set step against whole-matrix step, momentum reset & $2.058\times$ & $[1.635, 2.590]$ \\
+reduced-set step against whole-matrix step, momentum carried & $1.840\times$ & $[1.426, 2.374]$ \\
+momentum carried against reset, whole-matrix step & $1.171\times$ & $[1.103, 1.243]$ \\
+momentum carried against reset, reduced-set step & $1.047\times$ & $[0.992, 1.105]$ \\
+both against neither & $2.154\times$ & $[1.656, 2.801]$ \\
+both against plain forward-backward & $11.687\times$ & $[8.227, 16.601]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The step taken from the Lipschitz constant of the current working set is what
+carries the result: its interval excludes one on every instance and across
+them. Carrying momentum is real only while the step comes from the whole
+matrix; once the reduced-set step is in place the interval straddles one and
+the within-instance comparison is inconclusive on seven of the ten. The reason
+is visible in the counts: the reduced-set step cuts a solve from 288
+evaluations and three re-plans to 96 and two, and momentum can only be worth
+what the re-plans would otherwise destroy. Against cuML, taking per instance
+the faster of its two precisions that reaches the target and its fastest run of
+that precision, the best arm is $2.28\times$ with a $95\%$ interval of $[1.73,
+3.01]$ and faster on ten of ten for the solve loop and for a repeated solve,
+and $0.06\times$ and faster on none for a first solve. Running every arm in
+float32, which matches the precision cuML wins with on most of these
+instances, gives $2.43\times$ and does not change any of the contrasts.
+
+One negative is worth stating because it was the hypothesis this grid was run
+to test. The advantage over cuML grows with the penalty weight, so it would be
+convenient if the ingredient that carries the speedup grew with it too. It does
+not. At $\alpha = 0.5$ the gain from the reduced-set step falls from
+$1.96\times$ at $0.02\lambda_{\max}$ to $1.13\times$ at $0.5\lambda_{\max}$,
+while the advantage over the baseline rises across that same range, so the two
+move in opposite directions; at $\alpha = 0.9$ the gain is not monotone at all
+and peaks in the middle. The two effects have different explanations. Heavily
+penalized instances are already short, thirty-two evaluations at
+$0.5\lambda_{\max}$, so a larger step has little left to save and the advantage
+there comes from the working set being small, which is a cost-per-iteration
+effect; lightly penalized instances give the larger step the most room in
+relative terms while remaining hard in absolute terms, which is where the
+baseline closes. The ingredient acts on the iteration count and the regime
+boundary is set by the cost per iteration.
+
+\subsection{Generalization: a frozen portfolio on held-out instances (2026-09-11)}
+\label{app:log:general}
+
+Artifacts: \texttt{results/generalisation\_20260911/} (\texttt{domain.json},
+\texttt{baselines/}, \texttt{tune/}, \texttt{cross/}, \texttt{portfolio.json},
+\texttt{heldout/}), \texttt{scripts/discovery/generalisation.py},
+\texttt{scripts/discovery/portfolio.py}, \texttt{atlas/evolve/portfolio.py}. Following
+the separation CAKE (arXiv 2608.12629) makes between tuning one shape and building a
+library, the domain and its split were written to \texttt{domain.json} before any
+tuning (2026-09-11, 11:02 UTC): four real LIBSVM datasets (epsilon training split,
+$4\times10^5\times2000$; epsilon test split, $10^5\times2000$; gisette, $6000\times5000$;
+covtype, $581012\times54$), $\lambda/\lambda_{\max}\in\{0.5, 0.2, 0.1, 0.05, 0.02\}$ and
+$\alpha\in\{0.5, 0.9\}$. The 18 tuning instances are epsilon training, gisette and
+covtype at 0.5, 0.1 and 0.02; the 22 held-out instances are the same datasets at 0.2
+and 0.05 (unseen regularization) and every epsilon test instance (an unseen shard of a
+tuned source). The guided loop ran on every tuning instance on the Blackwell, step
+size timed, including the 9 on which cuML in float32 never reaches the target (there
+it is tuned against cuML's closest run, which only feeds the rules). Every distinct
+best configuration was then timed on every tuning instance, and a portfolio of at most
+three recipes with a dispatch tree of depth two on declared features ($\log n$,
+$\log p$, $\lambda/\lambda_{\max}$, $\alpha$) was fitted to the geometric-mean time on the
+tuning instances only, then frozen with a content hash (\texttt{ae2a840e\ldots}) before
+any held-out instance ran.
+
+The fitted portfolio has two recipes and one split, on $\lambda/\lambda_{\max}\le0.06$:
+below it, a working set started at $p/64$ with screening, buckets and $K=64$; above it,
+the same with $K=16$ and float32 storage. On the tuning instances its geometric-mean
+time is 0.071 s, against 0.084 s for the single best recipe and 0.060 s for an oracle
+that picks the best candidate per instance.
+
+Held-out result against cuML in both precisions (three runs per instance, fastest
+shown; our time is the median of three solves after an untimed warm-up; the last
+column divides the faster cuML precision that reaches the target by our time):
+
+\begin{center}
+\small
+\begin{tabular}{lllrrrr}
+\toprule
+dataset & $\alpha$ & $\lambda/\lambda_{\max}$ & ours (s) & cuML float32 (s) & cuML float64 (s) & speedup \\
+\midrule
+covtype & 0.5 & 0.05 & 0.1102 & fails ($\ge4\times10^{-6}$) & 0.3258 & 2.96 \\
+covtype & 0.5 & 0.2 & 0.0552 & 0.0698 & 0.0778 & 1.26 \\
+covtype & 0.9 & 0.05 & 0.2265 & fails ($\ge3\times10^{-5}$) & 0.6153 & 2.72 \\
+covtype & 0.9 & 0.2 & 0.0670 & fails ($\ge2\times10^{-5}$) & 0.1330 & 1.98 \\
+epsilon test & 0.5 & 0.02 & 0.2380 & 0.3296 & 0.3679 & 1.39 \\
+epsilon test & 0.5 & 0.05 & 0.1806 & 0.2085 & 0.2931 & 1.15 \\
+epsilon test & 0.5 & 0.1 & 0.0499 & 0.1296 & 0.1587 & 2.60 \\
+epsilon test & 0.5 & 0.2 & 0.0388 & 0.1372 & 0.0799 & 2.06 \\
+epsilon test & 0.5 & 0.5 & 0.0103 & 0.1465 & 0.0638 & 6.18 \\
+epsilon test & 0.9 & 0.02 & 0.2730 & fails ($\ge5\times10^{-6}$) & 0.8840 & 3.24 \\
+epsilon test & 0.9 & 0.05 & 0.1286 & fails ($\ge1\times10^{-6}$) & 0.4922 & 3.83 \\
+epsilon test & 0.9 & 0.1 & 0.0697 & 0.3237 & 0.3375 & 4.65 \\
+epsilon test & 0.9 & 0.2 & 0.0327 & 0.1879 & 0.2496 & 5.74 \\
+epsilon test & 0.9 & 0.5 & 0.0130 & 0.1180 & 0.0786 & 6.03 \\
+epsilon train & 0.5 & 0.05 & 0.6301 & 0.6861 & 0.8139 & 1.09 \\
+epsilon train & 0.5 & 0.2 & 0.1877 & 0.4417 & 0.1857 & 0.99 \\
+epsilon train & 0.9 & 0.05 & 0.4403 & fails ($\ge3\times10^{-6}$) & 1.7208 & 3.91 \\
+epsilon train & 0.9 & 0.2 & 0.1326 & 0.6295 & 0.6359 & 4.75 \\
+gisette & 0.5 & 0.05 & 0.0313 & 0.1160 & 0.2050 & 3.70 \\
+gisette & 0.5 & 0.2 & 0.0194 & 0.0585 & 0.1072 & 3.02 \\
+gisette & 0.9 & 0.05 & 0.0443 & fails ($\ge3\times10^{-6}$) & 0.3383 & 7.64 \\
+gisette & 0.9 & 0.2 & 0.0178 & 0.0800 & 0.1352 & 4.49 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Our dispatched recipe certifies all 22 held-out instances, and cuML in float64
+reaches the target on all 22 as well, so every instance has a baseline. Against
+the faster cuML precision that reaches the target on each instance, the frozen
+portfolio is faster on 21 of 22, by a geometric mean of $2.91\times$ against cuML's
+fastest run and $3.13\times$ against its median (range $0.99\times$ to $7.64\times$;
+the one loss, epsilon training at $\alpha=0.5$, $\lambda=0.2\lambda_{\max}$, is 0.1877 s
+against 0.1857 s). Against float32 alone, on the 15 instances where it reaches the
+target, the figures are $3.21\times$ and $3.82\times$ (15 of 15); against float64 alone,
+$3.33\times$ and $3.42\times$ (21 of 22). For reference, the single best recipe gives
+$2.37\times$ (20 of 22) and plain FISTA $0.36\times$ (3 of 22) against the faster cuML
+precision, so the gain comes from the recipes the loop found and from dispatching
+between two of them, not from FISTA. The tuning used the rules as they stood before
+the two rules of Section~\ref{app:log:diagnose} were added; the cheaper step estimate
+those runs identified is not in this portfolio.
+
+Caveats. One regularization family (elastic-net logistic), four dense datasets and
+one GPU type; cuML's times vary between runs (the table shows the fastest of three);
+ours runs in float64 or float32 storage with a float64
+certificate, and cuML was given both precisions.
+
+The exclusion of compilation above is not the symmetric statement it appears to be,
+and the numbers in this subsection must be read with the following correction. Our
+compilation is about three seconds against solves of $0.01$ to $0.4$ s, and until
+2026-09-13 it was re-paid on every call, because the compiled programs were held in a
+dictionary local to the solve and discarded when it returned. The excluded cuML
+warm-up is a two-iteration fit on a small slice. So the figure reported above was the
+solve loop alone, and no caller could obtain it: every solve, including every point of
+a regularization path, paid the compilation again. Programs are now reused across
+calls, keyed on a fingerprint of the labels as well as the shapes, since the labels and
+the two penalty parameters are constants in the compiled program. A repeated solve at
+one penalty weight now compiles once, and so does a path over several weights: the two
+penalty parameters were made arguments of the compiled program rather than constants
+in it. Solving a five-point path now costs one compilation instead of five, and the
+solutions are unchanged to the last bit.
+
+Three times are therefore distinct and they are three different claims: a first solve
+on an empty cache, a repeated solve, and the solve loop. Re-measured under that
+accounting, on the ten held-out instances that can still be measured, the dispatched
+portfolio is $2.39\times$ the better cuML precision's fastest run, with a $95\%$
+interval over the ten instances of $1.40$ to $4.07$, and faster on eight of ten; the
+repeated solve is identical, and these records do not measure a first solve, because
+the warm-up absorbs the compilation. Variation between runs is small next to variation
+between instances, which is what makes an interval over instances the right summary
+here: our three repetitions span at most $1.06\times$ and cuML's at most $1.57\times$,
+and the comparison takes cuML's fastest run rather than its median, which favours the
+baseline. It is an interval over instances and not a paired test between the two
+solvers, whose repetitions are independent runs with no matched pairing. The advantage grows monotonically with
+the penalty weight, from $1.50\times$ at $\lambda = 0.02\lambda_{\max}$ to
+$7.00\times$ at $0.5\lambda_{\max}$, and both losses fall at the weakest penalties,
+where the solution is densest and screening removes least. The eight-fold spread is
+visible in the iteration counts, which run from 16 at $0.5\lambda_{\max}$ to 448 at
+$0.02\lambda_{\max}$. The claim this supports is therefore about well-regularized
+instances of the family, with a crossover near $0.05\lambda_{\max}$ at $\alpha=0.5$,
+not about the family as a whole.
+
+Only ten of the twenty-two held-out instances could be re-measured. Two of the four
+datasets are no longer on disk and are absent from the data manifest, and the largest
+does not fit in this GPU's memory beside the language-model server, needing
+$5.98$ GiB for the design matrix alone. The earlier $2.91\times$ over twenty-two
+instances and the $2.39\times$ here are not the same quantity measured twice.
+
+\subsection{Variable metric ideas considered for QP}
+\label{app:log:varmetric}
+
+Source: J.F.~Bonnans, J.Ch.~Gilbert, C.~Lemar\'echal and C.A.~Sagastiz\'abal, A
+family of variable metric proximal methods, Mathematical Programming 68
+(1995) 15--47, read in full on 2026-09-10. The first idea is now implemented and measured
+(Section~\ref{app:log:adaptive}). The quasi-Newton primal metric is implemented as
+the builder \texttt{condat\_vu\_metric} and measured on all 137 QP instances: it does not
+help. With ten Krylov secant pairs it solves 55 instances like the scalar step (one
+gained, one lost) and needs $1.20\times$ the iterations and $1.52\times$ the time where
+both solve; built from warm-up iterates it solves 53 (two gained, four lost), with
+$1.16\times$ the iterations. The remaining ideas are recorded with the gate rule they
+would need.
+
+\begin{itemize}
+\item A gate for adapting the metric. The paper's global result allows any
+  sequence of positive definite metrics $M_n$ in the proximal step, provided a
+  sufficient-decrease test holds and $\sum_n \lambda_{\min}(M_n^{-1}) = \infty$
+  (for BFGS metrics this follows from $\operatorname{tr} M_n \le (n+1)C$). For
+  the splitting schemes in our genome the matching condition is the variable
+  metric quasi-Fej\'er rule of Combettes and V\~u (2013, 2014): uniform bounds
+  $\alpha I \preceq M_n \preceq \beta I$ and $M_{n+1} \preceq (1+\eta_n) M_n$
+  with $\sum_n \eta_n < \infty$. This is the missing certificate for the
+  adaptive step ratio: PDLP's primal weight and OSQP's adaptive $\rho$ are
+  scalar varying metrics adapted without such a budget.
+\item A quasi-Newton primal metric. With secant pairs $s_n = x_{n+1}-x_n$ and
+  $y_n = \nabla f(x_{n+1}) - \nabla f(x_n)$, which for a QP equal $P s_n$
+  exactly, a limited-memory BFGS metric can drive the primal step. The
+  structural fact that makes this cheap: in the OSQP form of a QP the
+  separable primal term is zero, so the primal update
+  $x^+ = x - M_n^{-1}(\nabla f(x) + A^\top u)$ needs no proximal map in the
+  non-diagonal metric, only an application of $M_n^{-1}$. The step condition
+  in the new metric must be re-checked (power iteration on $M_n^{-1}P$ and
+  $A M_n^{-1} A^\top$), which is affordable only at chunk boundaries: metric
+  updates would happen at the certificate cadence $K$, the one gene already
+  known to couple $N$ and $t$.
+\item Reflection with a matched metric. When the metric equals the Hessian of
+  a quadratic, the proximal step moves only half way to the minimizer, and the
+  step $x_{n+1} = x_n + 2(x^p_n - x_n)$ recovers it; the paper's line search
+  prefers this step and falls back when a descent test fails. In our genome
+  this is relaxation $\rho=2$ combined with the safeguarded switch wrapper.
+  Reflected Halpern restarts without a matched metric did not help on
+  transport (Section~\ref{app:log:ot}).
+\item A relative acceptance test for inexact proximal steps. An approximate
+  proximal point is accepted when a lower model of the objective is accurate
+  enough there, a relative test that needs no summable error sequence. This
+  is the stopping rule the conjugate-gradient option of a factorization-based
+  proximal step would need, and it connects to the relative-error criterion
+  of Solodov and Svaiter in the knowledge base. It is not new for QP:
+  rPDHCG solves the primal subproblems of PDHG inexactly by conjugate
+  gradients, and a 2026 GPU conic-QP solver uses a relative proximal-error
+  budget for restarted PDHG (arXiv 2608.09159).
+\item Prior use, from one search each: a quasi-Newton primal metric appears
+  in general proximal splitting (arXiv 1801.08691, 2209.14019) but was not
+  found in LP or QP PDHG practice, so it is a frontier candidate pending a
+  wider search; reflection is already used (reflected Halpern PDHG for LP,
+  arXiv 2407.16144).
+\end{itemize}
+
+\subsection{Defects found and fixed}
+\label{app:log:defects}
+
+Each of these changed a reported number before it was caught.
+\begin{itemize}
+\item The device-loop runner cached compiled programs even for closures it
+  could not key, so a solve at $\rho=1$ reused the $\rho=1.9$ program and
+  returned 640 iterations instead of 1152.
+\item The multi-commodity-flow result cache ignored the cost bound, so
+  cached solutions could be silently infeasible; hits are now checked.
+\item Compile-cache keys ignored device placement (in two separate copies of
+  the key function), so a GPU solve could receive a CPU-compiled program. One
+  shared key function now includes placement.
+\item An uncompiled certificate in a benchmark harness inflated the baseline
+  from 15.3 to 29.6 microseconds per iteration.
+\item The OSQP-style QP certificate divides every residual by one global scale and
+  admits points that are not solutions: on BOYD2 an Anderson iterate missing
+  167,970 rows by more than $10^{-6}$ of their own bounds passed at $7\times10^{-5}$,
+  because the largest bound in the problem, $2.2\times10^{11}$, sets the global
+  scale that every row's violation is divided by. Two earlier claims were retracted (BOYD1 as a win over
+  OSQP; BOYD2 as certified), two intermediate diagnoses were wrong (a blown-up
+  iterate on BOYD2; a data-normalized certificate as the fix, which the
+  PRIMALC2 blow-up still passes), and the per-row accuracy judge replaced
+  them for all claims.
+\item The first Anderson implementation evaluated both the extrapolated and the
+  fallback step every iteration (a \texttt{where} computes both branches) but
+  charged the second only on rejection, so its evaluation counts were
+  understated by up to half; wall times were correct. It now evaluates the
+  fallback only when the safeguard rejects, and a test pins the count at both
+  extremes. Unfilled history rows are masked, which removed spurious early
+  rejections.
+\item The composer flattened the operator state into one vector so that
+  every wrapper was plain vector algebra. Inside the loop the round trip
+  (unflatten, apply the operator, flatten) made PDHG on a $1024\times1024$
+  transport plan 35 times slower per step than the policy runner (1988
+  against 56.5 microseconds, identical iterates to $6\times10^{-14}$). All
+  composer times on transport, and the time ratios of the Condat-Vu
+  compositions on QP, were inflated; evaluation counts were not. The state is
+  now a pytree and the problem data are arguments of the compiled loop. On the
+  transport creation loop plain PDHG went from 109.7 s to 4.27 s for the same
+  69,248 evaluations (Section~\ref{app:log:ot}).
+\item At a fixed point reached to machine precision the Anderson history
+  vanishes, the ridge (proportional to the trace of the Gram matrix)
+  underflows and the least-squares solve can return infinite coefficients;
+  the safeguard then rejected every step. A non-finite solve now falls back to
+  zero coefficients, which is exactly the plain step at its usual cost. This
+  also changes Anderson trajectories in degenerate states; the QP family
+  counts are being rerun.
+\item Three execution defects in the new logistic runner, each found by
+  measurement: a compiled certificate that closed over the data matrix
+  embedded it as a constant (1.6 GB, which exhausted GPU memory next to the
+  language-model server, and 6.4 GB in a CPU baseline driver), now an
+  argument; re-planning operations compiled for every new active size inside
+  the timed loop, which made screening look slower than no screening on the
+  GPU, now compiled ahead of time for bucketed shapes; float32 iterates were
+  promoted to float64 by the labels, which broke the loop, now cast.
+\item The step size of FISTA and forward-backward was computed outside the
+  timer in all earlier logistic rows (correction in
+  Section~\ref{app:log:logreg}).
+\item PRIMALC1 and PRIMALC2, as distributed (linear term in $\{-1, 0\}$,
+  bounds at $\pm10^{20}$) and loaded, are reported dual infeasible by Clarabel,
+  and no solver in the head-to-head solves them. The unit test that described
+  a PRIMALC2 Anderson iterate as blown up compared it with an OSQP reference
+  that had stopped at its iteration limit; it now uses a deterministic point on
+  PRIMALC8, Clarabel's solution moved by 1 in its largest coordinate, which
+  the global certificate passes at $4.6\times10^{-5}$ and the per-row judge
+  rejects. No accuracy claim rests on PRIMALC1 or PRIMALC2.
+\item Installing baseline solvers into the main environment silently
+  downgraded numpy and scipy and broke JAX; baselines now live in isolated
+  environments.
+\item The scale sweep timed the two sides over different spans. Our clock started
+  after equilibration and operator construction and reported compilation in a
+  separate field, while OSQP, SCS and Clarabel were timed from before their own
+  setup. On the generated lasso family at $25{,}000$ variables the solve loop alone
+  read $6.4\times$ faster than Clarabel; charging our own setup to the same clock
+  turns that row into a loss, and a clean rerun of the instance gives
+  $1.202$ s against $2.380$ s, a $1.98\times$ win. The direction of the correction was
+  certain, its size was not, and the first row of the old sweep was additionally
+  inflated by one-time process warm-up (its preparation at $25{,}000$ variables
+  exceeded its preparation at $75{,}000$, which is backwards in problem size). Every
+  row now records rescaling, preparation, compilation and solving separately, and a
+  total that is the only figure a comparison may use.
+\item Repetitions were summarized to a median and the individual timings were
+  discarded, so no arm could be compared with another as a paired difference and no
+  claim carried an interval. The baseline's repetitions were stored per run and ours
+  were not, which is the only reason a paired test was impossible. Every repetition
+  is now kept, and contrasts are reported as paired differences with a $95\%$
+  interval. Overlapping per-arm ranges are not a test of anything: two arms can
+  overlap almost entirely and still differ on every matched pair.
+\item The screened runner rebuilt every compiled program on every call, about three
+  seconds on the dense logistic instances. The cost was excluded from the reported
+  solve time and paid on every solve, so the figure we reported was not obtainable by
+  any caller. Executables are now reused across calls. The cache key carries a
+  fingerprint of the labels as well as the shapes, because the labels, the
+  regularization weight and the mixing parameter are all baked into the compiled
+  program as constants, so a key on shapes alone would return a program holding
+  another dataset's labels. A repeated solve at one regularization weight now
+  compiles once, and so does a path over several weights, the two penalty parameters
+  having been made arguments of the compiled program rather than constants in it. A
+  first solve on an empty cache still pays for both.
+\item The generated-QP sparsity pattern was drawn with a library routine that, given
+  an integer seed, permutes the entire index population: at $50{,}000 \times 100{,}000$
+  that is a $37.3$ GiB allocation. It was killed by the operating system on every
+  sweep above $75{,}000$ variables, so the largest sizes were unreachable for a reason
+  that had nothing to do with any solver. Rejection sampling in the number of
+  nonzeros replaces it and builds the same shape and nonzero count, $5.5$ million
+  nonzeros in $3.9$ s within $0.53$ GB.
+\item The sweep's progress line crashed the whole run the first time one of our own
+  arms failed, because it read a status field that only baseline records carry.
+  Results already written to disk survived; the run did not.
+\end{itemize}
+
+\subsection{Superseded claims, in full}
+\label{app:log:superseded}
+
+Every figure this project reported and later changed is listed here with both
+values, so that the correction can be checked without reconstructing it from
+the defect list. The defects themselves, which are the mechanisms behind the
+first group, are in Section~\ref{app:log:defects}. Three kinds are kept apart
+because they need different scrutiny: a changed clock measures the same
+instance differently, a changed instance set is not the same quantity at all,
+and a reversal means the earlier statement was wrong rather than mismeasured.
+
+\paragraph{Accounting: same instances, corrected clock.}
+Our solve loop was compared against baselines timed from before their own
+setup. Charging our equilibration, operator construction and compilation to
+the same clock gives, on the generated lasso family:
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+Comparison & as first reported & as corrected & artifact \\
+\midrule
+$25{,}000$ variables, against Clarabel & $6.4\times$ & $1.98\times$ & \texttt{lasso\_cpu\_likeforlike} \\
+$25{,}000$ variables, against OSQP & $46\times$ & $10.0\times$ & \texttt{lasso\_cpu\_likeforlike} \\
+$25{,}000$ variables, against SCS & $85\times$ & $19.2\times$ & \texttt{lasso\_cpu\_likeforlike} \\
+$75{,}000$ variables, against Clarabel & $19\times$ & $6.04\times$ & \texttt{lasso\_cpu\_likeforlike} \\
+$75{,}000$ variables, against OSQP & $133\times$ & $50.0\times$ & \texttt{lasso\_cpu\_likeforlike} \\
+$75{,}000$ variables, against SCS & $304\times$ & $97.9\times$ & \texttt{lasso\_cpu\_likeforlike} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+An intermediate estimate, that honest accounting turned the $25{,}000$ row into
+a $1.22\times$ loss, was itself wrong: it used a preparation time inflated by
+one-time process warm-up. The clean rerun is the $1.98\times$ above. The
+generated SVM figures elsewhere in this log were measured on the old clock and
+have never been repeated under the corrected clock; they are marked where they
+appear and should not be read beside these.
+
+\paragraph{Scope: a different instance set, not the same quantity twice.}
+The held-out logistic result was first reported as a geometric mean of
+$2.91\times$ over cuML on 21 of 22 instances. Re-measured, it is $2.39\times$
+with a $95\%$ interval of $[1.40, 4.07]$ and faster on 8 of 10. The instance
+count fell because two of the four datasets are no longer on disk and a third
+does not fit in float64 beside the language-model server. Both numbers stand
+as measured; neither supersedes the other in the ordinary sense.
+
+\paragraph{Reversals: the earlier statement was wrong.}
+\begin{itemize}
+\item An ingredient of ours, recomputing the Lipschitz constant on the current
+  working set, was recorded internally as the strongest remaining candidate for
+  novelty on the grounds that the screening literature is almost entirely
+  coordinate descent. That is false. Wang, Yu, Liang, Wu and Yu, An Iterative
+  Reduction FISTA Algorithm for Large-Scale LASSO, SIAM Journal on Scientific
+  Computing 44(4), 2022, do exactly this in full-gradient FISTA, attribute
+  their speedup to the smaller constant, and demonstrate it on the same epsilon
+  data at the same penalty weight. No novelty is claimed for it.
+\item Carrying momentum across a change of the working set was recorded as a
+  second unclaimed ingredient. Measured, it is inconclusive once the
+  reduced-set step is present ($1.047\times$, interval $[0.992, 1.105]$, and
+  within-instance inconclusive on 7 of 10). It is real only in the full-matrix
+  regime.
+\item Float32 iterates were reported to buy nothing, from $0.722$ s against
+  $0.668$ s. After the reduction in the gradient was restructured, float32 is
+  $1.30\times$ faster than float64 on the working-set configuration.
+\item The remedy proposed for that, a fused single-pass gradient kernel
+  costing four times less than float64, was impossible as stated: the
+  transposed product consumes a vector that depends on the forward product. The
+  achievable figure is a factor of two, and it needs no kernel.
+\item A certified adaptive diagonal metric was built as a candidate new method.
+  It is a measured negative: it failed to certify at both sizes where the
+  scalar version succeeded.
+\item BOYD1 as a win over OSQP, and BOYD2 as certified, were retracted after
+  the per-row accuracy audit (Section~\ref{app:log:qp}).
+\end{itemize}
+
+\subsection{Open items}
+\label{app:log:open}
+
+\begin{itemize}
+\item Time to solution against PDLP and HiGHS on the real LP suites at
+  matched criteria (the harness exists; the comparison has not been run).
+\item The three harvested features as combinable genes, starting with the
+  adaptive step ratio.
+\item A reader for the DIMACS min-cost-flow data, so that family runs on
+  real instances.
+\item A relative-only certificate option for transport.
+\item Automatic recipe selection from measured problem structure (the
+  endgame): not started.
+\item The held-out generalization set can no longer be measured in full. Two of its
+  four datasets are absent from disk and from the data manifest, which leaves eight
+  of the twenty-two instances unavailable, and re-acquiring them would not reproduce
+  the original preprocessing. A third does not fit in float64 on this GPU beside the
+  language-model server, whose design matrix alone needs $5.98$ GiB.
+\item The solver holds the design matrix densely, so the family it applies to is a
+  dense matrix with a sparse solution, and not sparse data. Both halves of that
+  description are load bearing and only one of them is supported today. The standard
+  sparse benchmarks for this problem family are therefore out of reach until the
+  iteration, the column gather and the certificate all have a sparse path: stored
+  densely in float64 they would need about $7.6$, $12.1$ and $217$ GB for rcv1,
+  real-sim and news20, against $1.6$ GB for the split used here.
+\end{itemize}

@@ -1,0 +1,188 @@
+
+
+
+
+\documentclass{article}
+
+\usepackage{iclr2027/iclr2027_conference,times}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}
+\usepackage{amsthm}
+\usepackage{placeins}
+% Upright (non-italic) body for all theorem-like environments, per style rule.
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\newcommand{\nnote}[1]{\textcolor{green}{\textbf{[Note:]}}}
+\newcommand{\mnote}[1]{\textcolor{blue}{\textbf{[Note:]}}}
+\newcommand{\iclrTODO}[1]{%
+  \par\noindent\fcolorbox{red}{yellow!15}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+      \centering\color{red}\Large\bfseries ICLR TODO: #1}}\par}
+\newcommand{\deprecated}[1]{\textcolor{red}{\textbf{[DEPRECATED FOR ICLR: #1]}}}
+
+\title{OptEvolve: Hardware-Aware Search for Certified Optimization Solvers}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Miria Feng\thanks{Use footnote for providing further information
+    about author (webpage, alternative address), not for acknowledging
+    funding agencies.} \\
+  Department of Electrical Engineering\\
+  Stanford University\\
+  Stanford, CA 94305 \\
+  \texttt{miria00@stanford.edu} \\
+  \And
+  Nikhil Devanathan \\
+  Department of Electrical Engineering \\
+  Stanford University \\
+  Stanford, CA 94305 \\
+  \texttt{ndev@stanford.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+% Keep this commented for an anonymous submission. Uncomment only for the
+% camera-ready version after acceptance.
+%\iclrfinalcopy
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+Solving a convex problem repeatedly on fixed hardware requires choosing both a
+mathematical iteration and the way it is executed. We show that time to a
+certified solution factorises as $T = N(\text{method}, \text{cadence},
+\text{tolerance}) \cdot t(\text{execution}, \text{fusion}, \text{size},
+\text{device})$, and that the certificate cadence is the only recipe gene
+appearing in both factors. The factorisation predicts that the two halves can
+be tuned separately, which is what we measure, and it names in advance the one
+axis on which that separation fails.
+
+We then attack each factor. For the per-iteration cost we localise a factor of
+two to a single implementation choice, an inner loop whose trip count is a
+traced rather than a static value, and we build a temporally fused CUDA kernel
+that advances several primal-dual iterations per launch from shared memory. It
+is admitted against a sequential reference to $4.6 \times 10^{-15}$ and is
+$1.86\times$ faster end to end on total-variation denoising.
+
+For the iteration count, the step-size ratio is predictable from one measured
+property of the problem, the ratio of the cost norm to the constraint norm. A
+rule fitted on min-cost flow alone, applied unchanged to optimal transport and
+to multi-commodity flow, lands within $1.13\times$ of a per-instance oracle
+across 162 held-out instances, against $1.83\times$ for the best single fixed
+choice.
+
+We measure two GPU architectures, and we report the settings at which each
+invariance fails.
+\end{abstract}
+
+% ---------------------------------------------------------------------------
+% CENTRAL THESIS. Stated once, immediately after the abstract, so a reviewer
+% cannot miss it and so every later section can refer back to one sentence.
+% The abstract above is UNCHANGED from the 6 September manuscript and does not
+% yet reflect these results; reconciling it is a coauthor decision.
+% ---------------------------------------------------------------------------
+\begin{center}
+\fbox{\begin{minipage}{0.93\linewidth}
+\textbf{Central thesis.} For a certified first-order convex solver, time to a
+checked solution factorises as
+\[
+T \;=\; \underbrace{N(\text{method},\, \text{cadence},\, \text{tolerance})}_{\text{iterations}}
+\;\times\;
+\underbrace{t(\text{execution structure},\, \text{fusion},\, \text{size},\, \text{device})}_{\text{cost per iteration}} ,
+\]
+and the certificate cadence is the only recipe gene that appears in both
+factors. The two halves can therefore be searched separately, which is why
+joint search does not beat staged search, and the one axis where that
+separation fails is the one the factorisation names in advance. We measure
+each factor, identify the mechanism behind the execution term, build a fused
+kernel that attacks it, and show that the method term is predictable from a
+single measured property of the problem.
+\end{minipage}}
+\end{center}
+
+\input{1-introduction}
+\input{2-related-work}
+\input{3-methods}
+\input{4-theory}
+\input{5-experiments}
+\input{6-conclusion}
+
+\section*{Reproducibility Statement}
+Every numeric claim in this paper names the artifact that produced it in a
+LaTeX source comment of the form \texttt{\% source: results/...}. Iteration
+counts additionally name their instance population, because scan selection
+depends on both the sampling seed and the number of scans drawn: the catalog
+fold is six scans at data seed 20260907 drawn from a pool of twelve, and the
+fusion sweep is six scans at seed 0, and the two selections share no images.
+Running the fusion harness on the catalog draw reproduces the catalog
+iteration counts. The frozen final holdout has not been evaluated and no
+number in this paper comes from it.
+
+\section*{Ethics Statement}
+The imaging experiments solve a convex denoising objective on an existing OCT
+dataset. Optimization accuracy does not establish preservation of pathology or
+suitability for clinical decisions. We report no clinical efficacy result.
+
+\section*{AI Use Statement}
+Language models assisted literature discovery, experiment planning, code
+implementation, debugging, manuscript drafting and interpretation of results.
+The authors are responsible for verifying the mathematics, citations, code and
+reported measurements.
+
+\bibliographystyle{iclr2027/iclr2027_conference}
+\bibliography{refs}
+
+\appendix
+\input{appendix-theory}
+\input{appendix-blending}
+\input{appendix-instantiation}
+
+\end{document}

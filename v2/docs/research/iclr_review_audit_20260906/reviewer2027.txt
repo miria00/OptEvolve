@@ -1,0 +1,207 @@
+                                          ICLR 2027 Reviewer Guidelines        Skip to yearly menu bar  Skip to main content   Main Navigation 
+          ICLR     Help/FAQ    
+   Contact ICLR    
+   Create Profile    
+   Code of Conduct    
+   Journal To Conference Track    
+   Diversity & Inclusion    
+   Proceedings at OpenReview    
+   Future Meetings    
+   Press    
+   Exhibitor Information    
+   ICLR Blog    
+   ICLR Twitter    
+   About ICLR    
+   Downloads    
+   Privacy Policy    
+   Reset Password   
+  
+   My Stuff   
+            Login                      Select Year: (2027)    2027   
+  2026   
+  2025   
+  2024   
+  2023   
+  2022   
+  2021   
+  2020   
+  2019   
+  2018   
+  2017   
+  2016   
+  2015   
+  2014   
+  2013  
+  
+   Dates   
+  Calls     Call for Papers    
+   Call For Blog Posts   
+  
+  Guides     Author Guide    
+   Area Chair Guide    
+   Senior Area Chair Guide    
+   Reviewer Guide    
+   AI Policy for Reviewers    
+   AI Policy for Authors   
+  
+              ICLR 2027 Reviewer Guide 
+ Thank you for agreeing to serve as an ICLR 2027 reviewer. Your contribution as a reviewer is paramount to creating an exciting and high-quality program. We ask that: 
+  Your reviews are timely and substantive. 
+ You follow the reviewing guidelines below. 
+ You adhere to our Code of Ethics in your role as a reviewer. You must also adhere to our Code of Conduct. 
+  This guide is intended to help you understand the ICLR 2027 decision process and your role within it. It contains: 
+  An outline of the main reviewer tasks 
+ Step-by-step reviewing instructions (especially relevant for reviewers that are new to ICLR) 
+ Review examples 
+ An FAQ 
+  We're counting on you! 
+ As a reviewer you are central to the program creation process for ICLR. Your Area Chairs (ACs), Senior Area Chairs (SACs) and the Program Chairs (PCs) will rely greatly on your expertise and your diligent and thorough reviews to make decisions on each paper. Therefore, your role as a reviewer is critical to ensuring a strong program for ICLR. 
+ High-quality reviews are also very valuable for helping authors improve their work, whether it is eventually accepted by ICLR or not. Therefore it is important to treat each valid ICLR submission with equal care. We ask that you: 
+   Be rigorous : read the paper carefully, check arguments in sufficient detail to convince yourself of the paper’s main claims, as well as to contextualize it in the broader research literature it belongs to. 
+ 
+  Be open-minded : not all work needs to compete on an established leaderboard, or work in an established theoretical framework—instead, ask yourself whether the results are likely to be interesting or surprising to a broad audience, or if it is possible they will take the field in new directions. 
+ 
+  Be concise: we know the review process is a huge amount of work for both reviewers and authors. LMs in particular make it easy to generate exhaustive reviews with many tens of individual points that need to be responded to. Longer reviews aren’t always better! Please only discuss points that are actually likely to influence your final accept / reject decision—pointing out typos, or suggesting peripheral citations and supplementary experiments just add to everyone’s workload without changing the final conference program. 
+ 
+  As a token of our appreciation for your essential work, top reviewers will be acknowledged permanently on the ICLR website. 
+ Main reviewer tasks 
+ The main reviewer tasks and dates are as follows (subject to minor changes): 
+  Create or update your OpenReview profile (September 1) 
+ Bid on papers (September 18 - September 25) 
+ Write a constructive, thorough and timely review (September Oct 1 - Oct 21) 
+ Initial paper reviews released (Nov 5) 
+ Discuss with authors to clarify and improve the paper (Nov 5 - November 18) 
+ Flag any potential CoE violations and/or concerns (by November 18) 
+ Discuss with reviewers and ACs to help finalize a decision (November 19 - November 25) 
+ Provide a recommendation to the area chair assigned to the paper (by November 25) 
+ Reviewer/AC Discussions and virtual meeting on AC’s discretion if paper you reviewed falls into borderline papers (November 26 - Dec 2) 
+   
+ Measures for excessively late or low-quality reviews 
+ Timely, high quality reviews are essential to the peer review process. We hope that all reviewers will adhere to this expectation. However, reviewers who submit late or poor quality reviews will be subject to the following penalties. 
+ Reviewers who are also authors (and their co‑authors) will not see the reviews of their own submission(s) during the rebuttal period until they have completed all of their assigned reviews. If reviews are late, the reviewers (and their co-authors) will lose access to the reviews of their own papers until completion of their professional reviews (up to two days before the end of the authors rebuttal period). 
+ Furthermore, reviewers who submit low quality reviews and fail to improve them upon being warned by ACs may have their own papers desk rejected: Low quality reviews will be flagged by ACs and SACs, and the flagged reviewers will be warned and urged to update the review. Reviewers who do not respond to these warnings will be liable to having their own papers desk rejected. 
+  
+ Code of Ethics 
+ All ICLR participants, including reviewers, are required to adhere to the ICLR Code of Ethics ( https://iclr.cc/public/CodeOfEthics ). All reviewers are required to read the Code of Ethics and adhere to it. The Code of Ethics applies to all conference participation, including paper submission, reviewing, and paper discussion. 
+ As part of the review process, reviewers are asked to raise potential violations of the ICLR Code of Ethics. Note that authors are encouraged to discuss questions and potential issues regarding the Code of Ethics as part of their submission. This discussion is not counted against the maximum page limit of the paper and should be included as a separate section. 
+ Use of AI tools 
+ See the AI policy for reviewers and ACs . 
+ Reviewing a submission: step-by-step 
+ Summarized in one sentence, a review aims to determine whether a submission will bring sufficient value to the community and contribute new knowledge. 
+ The process can be broken down into the following main reviewer tasks: 
+  Read the paper: It’s important to carefully read through the entire paper and to look up any related work and citations that will help you comprehensively evaluate it. Be sure to give yourself sufficient time for this step. 
+ While reading, consider the following:  Objective of the work: What is the goal of the paper? Is it to better address a known application or problem, draw attention to a new application or problem, or to introduce and/or explain a new theoretical finding? A combination of these? Different objectives will require different considerations as to potential value and impact. 
+ Strong points: is the submission clear, technically correct, experimentally rigorous, reproducible, does it present novel findings (e.g. theoretically, algorithmically, etc.)? 
+ Weak points: is it weak in any of the aspects listed above? 
+ Be mindful of potential biases and try to be open-minded about the value and interest a paper can hold for the entire ICLR community, even if it may not be very interesting for you. 
+  
+ Answer four key questions for yourself to make a recommendation to Accept or Reject:  What is the specific question and/or problem tackled by the paper? 
+ Is the approach well motivated, including being well-placed in the literature? 
+ Does the paper support the claims? This includes determining if results, whether theoretical or empirical, are correct and if they are scientifically rigorous. 
+ What is the significance of the work? Does it contribute new knowledge and sufficient value to the community? Note, this does not necessarily require state-of-the-art results. Submissions bring value to the ICLR community when they convincingly demonstrate new, relevant, impactful knowledge (incl., empirical, theoretical, for practitioners, etc). 
+  
+ Write and submit your initial review, organizing it as follows:  Summarize what the paper claims to contribute. Be positive and constructive. 
+ List strong and weak points of the paper. Be as comprehensive as possible. 
+ Clearly state your initial recommendation (accept or reject) with one or two key reasons for this choice. 
+ Provide supporting arguments for your recommendation. 
+ Ask questions you would like answered by the authors to help you clarify your understanding of the paper and provide the additional evidence you need to be confident in your assessment. 
+ Provide additional feedback with the aim to improve the paper. Make it clear that these points are here to help, and not necessarily part of your decision assessment. 
+  
+ Complete the CoE report: ICLR has adopted the following Code of Ethics (CoE). When submitting your review, you’ll be asked to complete a CoE report for the paper. The report is a simple form with two questions. The first asks whether there is a potential violation of the CoE. The second is relevant only if there is a potential violation and asks the reviewer to explain why there may be a potential violation. In order to answer these questions, it is therefore important that you read the CoE before starting your reviews. 
+ Engage in discussion: During this phase, reviewers, authors and area chairs engage in asynchronous discussion and authors are allowed to revise their submissions to address concerns that arise. It is crucial that you are actively engaged during this phase. Maintain a spirit of openness to changing your initial recommendation (either to a more positive or more negative) rating. 
+ Borderline paper meeting: Similarly to last year, the ACs have the option to (virtually) meet and discuss borderline cases with reviewers. ACs will reach out to schedule this meeting. This is to ensure active discussions among reviewers and well-thought-out decisions. ACs will schedule the meeting and facilitate the discussion. For a productive discussion, it is important to familiarize yourself with other reviewers' feedback prior to the meeting. 
+ Provide final recommendation: Update your review, taking into account the new information collected during the discussion phase and any revisions to the submission. (Note that reviewers can change their reviews after the author response period.)  State your reasoning and what did/didn’t change your recommendation throughout the discussion phase. 
+  Review Examples 
+ Here are two sample reviews from previous conferences that give an example of what we consider a good review for the case of leaning-to-accept and leaning-to-reject. 
+ Review for a Paper where Leaning-to-Accept 
+ This paper proposes a method, Dual-AC, for optimizing the actor (policy) and critic (value function) simultaneously which takes the form of a zero-sum game resulting in a principled method for using the critic to optimize the actor. In order to achieve that, they take the linear programming approach of solving the Bellman optimality equations, outline the deficiencies of this approach, and propose solutions to mitigate those problems. The discussion on the deficiencies of the naive LP approach is mostly well done. Their main contribution is extending the single step LP formulation to a multi-step dual form that reduces the bias and makes the connection between policy and value function optimization much clearer without losing convexity by applying a regularization. They perform an empirical study in the Inverted Double Pendulum domain to conclude that their extended algorithm outperforms the naive linear programming approach without the improvements. Lastly, there are empirical experiments done to conclude the superior performance of Dual-AC in contrast to other actor-critic algorithms. 
+ Overall, this paper could be a significant algorithmic contribution, with the caveat for some clarifications on the theory and experiments. Given these clarifications in an author response, I would be willing to increase the score. 
+ For the theory, there are a few steps that need clarification and further clarification on novelty. For novelty, it is unclear if Theorem 2 and Theorem 3 are both being stated as novel results. It looks like Theorem 2 has already been shown in "Randomized Linear Programming Solves the Discounted Markov Decision Problem in Nearly-Linear Running Time”. There is a statement that “Chen & Wang (2016); Wang (2017) apply stochastic first-order algorithms (Nemirovski et al., 2009) for the one-step Lagrangian of the LP problem in reinforcement learning setting. However, as we discussed in Section 3, their algorithm is restricted to tabular parametrization”. Is your Theorem 2 somehow an extension? Is Theorem 3 completely new? 
+ This is particularly called into question due to the lack of assumptions about the function class for value functions. It seems like the value function is required to be able to represent the true value function, which can be almost as restrictive as requiring tabular parameterizations (which can represent the true value function). This assumption seems to be used right at the bottom of Page 17, where U^{pi*} = V^*. Further, eta_v must be chosen to ensure that it does not affect (constrain) the optimal solution, which implies it might need to be very small. More about conditions on eta_v would be illuminating. 
+ There is also one step in the theorem that I cannot verify. On Page 18, how is the squared removed for difference between U and Upi? The transition from the second line of the proof to the third line is not clear. It would also be good to more clearly state on page 14 how you get the first inequality, for || V^* ||_{2,mu}^2. 
+ For the experiments, the following should be addressed. 
+ 1. It would have been better to also show the performance graphs with and without the improvements for multiple domains. 
+ 2. The central contribution is extending the single step LP to a multi-step formulation. It would be beneficial to empirically demonstrate how increasing k (the multi-step parameter) affects the performance gains. 
+ 3. Increasing k also comes at a computational cost. I would like to see some discussions on this and how long dual-AC takes to converge in comparison to the other algorithms tested (PPO and TRPO). 
+ 4. The authors concluded the presence of local convexity based on hessian inspection due to the use of path regularization. It was also mentioned that increasing the regularization parameter size increases the convergence rate. Empirically, how does changing the regularization parameter affect the performance in terms of reward maximization? In the experimental section of the appendix, it is mentioned that multiple regularization settings were tried but their performance is not mentioned. Also, for the regularization parameters that were tried, based on hessian inspection, did they all result in local convexity? A bit more discussion on these choices would be helpful. 
+  
+ Minor comments: 
+ 1. Page 2: In equation 5, there should not be a 'ds' in the dual variable constraint 
+ Review for a Paper where Leaning-to-Reject 
+ This paper introduces a variation on temporal difference learning for the function approximation case that attempts to resolve the issue of over-generalization across temporally-successive states. The new approach is applied to both linear and non-linear function approximation, and for prediction and control problems. The algorithmic contribution is demonstrated with a suite of experiments in classic benchmark control domains (Mountain Car and Acrobot), and in Pong. 
+ This paper should be rejected because (1) the algorithm is not well justified either by theory or practice, (2) the paper never clearly demonstrates the existence of problem they are trying to solve (nor differentiates it from the usual problem of generalizing well), (3) the experiments are difficult to understand, missing many details, and generally do not support a significant contribution, and (4) the paper is imprecise and unpolished. 
+ Main argument 
+ The paper does not do a great job of demonstrating that the problem it is trying to solve is a real thing. There is no experiment in this paper that clearly shows how this temporal generalization problem is different from the need to generalize well with function approximation. The paper points to references to establish the existence of the problem, but for example the Durugkar and Stone paper is a workshop paper and the conference version of that paper was rejected from ICLR 2018 and the reviewers highlighted serious issues with the paper—that is not work to build upon. Further the paper under review here claims this problem is most pressing in the non-linear case, but the analysis in section 4.1 is for the linear case. 
+ The resultant algorithm does not seem well justified, and has a different fixed point than TD, but there is no discussion of this other than section 4.4, which does not make clear statements about the correctness of the algorithm or what it converges to. Can you provide a proof or any kind of evidence that the proposed approach is sound, or how it’s fixed point relates to TD? 
+ The experiments do not provide convincing evidence of the correctness of the proposed approach or its utility compared to existing approaches. There are so many missing details it is difficult to draw many conclusions: 
+ What was the policy used in exp1 for policy evaluation in MC? 
+ Why Fourier basis features? 
+ In MC with DQN how did you adjust the parameters and architecture for the MC task? 
+ Was the reward in MC and Acrobot -1 per step or something else 
+ How did you tune the parameters in the MC and Acrobot experiments? 
+ Why so few runs in MC, none of the results presented are significant? 
+ Why is the performance so bad in MC? 
+ Did you evaluate online learning or do tests with the greedy policy? 
+ How did you initialize the value functions and weights? 
+ Why did you use experience replay for the linear experiments? 
+ IN MC and Acrobot why only a one layer MLP? 
+ Ignoring all that, the results are not convincing. Most of the results in the paper are not statistically significant. The policy evaluation results in MC show little difference to regular TD. The Pong results show DQN is actually better. This makes the reader wonder if the result with DQN on MC and Acrobot are only worse because you did not properly tune DQN for those domains, whereas the default DQN architecture is well tuned for Atari and that is why you method is competitive in the smaller domains. 
+ The differences in the “average change in value plots” are very small if the rewards are -1 per step. Can you provide some context to understand the significance of this difference? In the last experiment linear FA and MC, the step-size is set equal for all methods—this is not a valid comparison. Your method may just work better with alpha = 0.1. 
+ The paper has many imprecise parts, here are a few: 
+ The definition of the value function would be approximate not equals unless you specify some properties of the function approximation architecture. Same for the Bellman equation 
+ equation 1 of section 2.1 is neither an algorithm or a loss function 
+ TD does not minimize the squared TD. Saying that is the objective function of TD learning in not true 
+ end of section 2.1 says “It is computed as” but the following equation just gives a form for the partial derivative 
+ equation 2, x is not bounded 
+ You state TC-loss has an unclear solution property, I don’t know what that means and I don’t think your approach is well justified either 
+ Section 4.1 assumes linear FA, but its implied up until paragraph 2 that it has not assumed linear 
+ treatment of n_t in alg differs from appendix (t is no time episode number) 
+ Your method has a n_t parameter that is adapted according to a schedule seemingly giving it an unfair advantage over DQN. 
+ Over-claim not supported by the results: “we see that HR-TD is able to find a representation that is better at keeping the target value separate than TC is “. The results do not show this. 
+ Section 4.4 does not seem to go anywhere or produce and tangible conclusions 
+  
+ Things to improve the paper that did not impact the score: 
+ It’s hard to follow how the prox operator is used in the development of the alg, this could use some higher level explanation 
+ Intro p2 is about bootstrapping, use that term and remove the equations 
+ It’s not clear why you are talking about stochastic vs deterministic in P3 
+ Perhaps you should compare against a MC method in the experiments to demonstrate the problem with TD methods and generalization 
+ Section 2: “can often be a regularization term” >> can or must be? 
+ update law is an odd term 
+ tends to alleviate” >> odd phrase 
+ section 4 should come before section 3 
+ Alg 1 in not helpful because it just references an equation 
+ section 4.4 is very confusing, I cannot follow the logic of the statements 
+ Q learning >> Q-learning 
+ Not sure what you mean with the last sentence of p2 section 5 
+ where are the results for Acrobot linear function approximation 
+ appendix Q-learning with linear FA is not DQN (table 2) 
+  
+ FAQ for Reviewers 
+ Q. I have more than 3 submissions to ICLR 2026, and per policy I was invited to be a reviewer. However the invite expired. Are my papers at risk of being desk rejected? 
+ No. Due to the tight reviewing timeline, we had to freeze the author and reviewer lists. Thanks for your eagerness to review, and we hope you will be available to review for future iterations. Your papers are not at risk of being desk rejected. 
+ Q. I added my name as a reciprocal reviewer. But I have not received any notification yet about being a reviewer. Is my paper going to be desk rejected? 
+ No. We have only added a subset of the reciprocal reviewers based on a variety of the criteria. Please check your openreview to see if you have been added as a reviewer.  Even if you haven't, your paper is not in danger of desk rejection 
+ Q:  If I see a version of the paper on arxiv, what should I do? 
+ A: It is recommended that you ignore the version on arxiv. 
+ Q: How should I use supplementary material? 
+ A: It is not necessary to read supplementary material but such material can often answer questions that arise while reading the main paper, so consider looking there before asking authors. 
+ Q: How should I handle a policy violation? 
+ A: To flag a CoE violation related to a submission, please indicate it when submitting the CoE report for that paper. The AC will work with the PC and the ethics board to resolve the case. To discuss other violations (e.g. plagiarism, double submission, paper length, formatting, etc.), please contact either the AC/SAC or the PC as appropriate. You can do this by sending a confidential comment with the appropriate readership restrictions. 
+ Q: Am I allowed to ask for additional experiments? 
+ A: You can ask for additional experiments. New experiments should not significantly change the content of the submission. Rather, they should be limited in scope and serve to more thoroughly validate existing results from the submission. 
+ Q: If a submission does not achieve state-of-the-art results, is that grounds for rejection? 
+ A: No, a lack of state-of-the-art results does not by itself constitute grounds for rejection. Submissions bring value to the ICLR community when they convincingly demonstrate new, relevant, impactful knowledge. Submissions can achieve this without achieving state-of-the-art results. 
+ Q: Are authors expected to cite and compare with very recent work? What about non peer-reviewed (e.g., ArXiv) papers? 
+ A: We consider papers contemporaneous if they are published within the last two months. That means, since our full paper deadline is September 16, if a paper was published (i.e., at a peer-reviewed venue) on or after July 17, 2026, authors are not required to compare their own work to that paper. Note that arXiv is not considered a peer-reviewed venue. As such, authors are not required to compare to papers solely on arXiv: they may be excused for not knowing about papers not published in peer-reviewed conference proceedings or journals, which includes papers exclusively available on arXiv. 
+ While authors are not required to compare to contemporaneous work or unpublished arxiv papers, they are strongly encouraged to cite such related work if they are aware of it. Reviewers can make authors aware of related contemporaneous work or arxiv papers, but the lack of such comparisons cannot be a basis for rejection.  
+              Successful Page Load        ICLR uses cookies for essential functions only. We do not sell your personal
+                        information. Our Privacy Policy »    Accept                       The ICLR Logo above may be used on presentations. Right-click and choose
+                            download. It is a vector graphic and may be used at any scale. 
+     Useful links    About ICLR 
+ Sponsor / Exhibitor Information 
+ Press 
+        Contact   2710 E Corridor Dr, Appleton WI 54913 
+   Email  
+ Phone: +1-920-268-4789 
+           ICLR Proceedings at OpenReview 
+          

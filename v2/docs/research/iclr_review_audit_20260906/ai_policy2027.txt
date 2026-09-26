@@ -1,0 +1,66 @@
+                                          ICLR 2027 AI Policy for Authors        Skip to yearly menu bar  Skip to main content   Main Navigation 
+          ICLR     Help/FAQ    
+   Contact ICLR    
+   Create Profile    
+   Code of Conduct    
+   Journal To Conference Track    
+   Diversity & Inclusion    
+   Proceedings at OpenReview    
+   Future Meetings    
+   Press    
+   Exhibitor Information    
+   ICLR Blog    
+   ICLR Twitter    
+   About ICLR    
+   Downloads    
+   Privacy Policy    
+   Reset Password   
+  
+   My Stuff   
+            Login                      Select Year: (2027)    2027   
+  2026   
+  2025   
+  2024   
+  2023   
+  2022   
+  2021   
+  2020   
+  2019   
+  2018   
+  2017   
+  2016   
+  2015   
+  2014   
+  2013  
+  
+   Dates   
+  Calls     Call for Papers    
+   Call For Blog Posts   
+  
+  Guides     Author Guide    
+   Area Chair Guide    
+   Senior Area Chair Guide    
+   Reviewer Guide    
+   AI Policy for Reviewers    
+   AI Policy for Authors   
+  
+              Policy on LLM use for research and writing papers 
+ LLMs are increasingly finding use in various research workflows, varying in sophistication from formulating proofs to formatting tables. We ask that authors explicitly state how they used LLMs in their submission, both in the paper’s text as well as in the paper submission form. To guide authors about the nature and extent of reporting, we provide a list of common research subtasks along with the necessity of disclosing them. 
+ The paper submission form will solicit some of the above information. Additionally, we require authors to disclose AI use in a mandatory section in their paper (this section will not be counted towards the page limit). The ICLR paper template includes a boilerplate disclosure to give authors a sense of the expected detail. You are not required to follow this format exactly—we believe these disclosures may be a source of useful information to the community about how AI is affecting research workflows, and we encourage you to provide as much detail as you want! 
+ Ultimately the paper’s authors are responsible for the contents of their submissions. Consequently, a substantial falsehood, instance of plagiarism, or misrepresentation produced by an LLM would be considered a Code of Ethics violation on the part of the paper’s authors, and might lead to desk rejection of the paper. 
+ Example AI disclosure section 
+ In this work, we used generative AI tools for <tasks with required disclosure>. We have not used generative AI tools for <other tasks with required disclosure>, and <the rest of the required disclosure tasks> are not applicable to this work. Additionally, we used generative AI tools for <tasks with recommended disclosure>. We have reviewed all AI-assisted work. [Elaborate. For example, “we checked LLM-generated research ideas for potential plagiarism through a manual literature survey”, “LLM-generated code was verified and tested for correctness by 2 authors”, etc.]. We take responsibility for the final content of this work, including text, claims or artifacts produced with the aid of generative AI. 
+ Below, we share a list of common research subtasks along with the necessity of disclosing them in the paper manuscript. 
+ Required : Generate synthetic data sets, help develop theoretical models or conceptual frameworks, formulate mathematical claims, provide critical ingredients for proving mathematical claims, assist in the writing of proofs, propose or refine hypotheses, design or provide feedback on research  methodology or experiments, implement methods, assist with translation, clean and reformat dataset, support qualitative and thematic data analysis, interpret results. 
+ Recommended : Formulate questions for surveys or interviews, create or modify scientific figures or images, suggest experimental parameters, create or edit software code,  creation of artifacts, draft parts of a research paper, transcribe recordings of research material, summarize or analyse existing literature, discover research topics or identify gaps, brainstorming, sourcing/searching for information, edit a research paper to improve readability, identify relevant literature, format references, suggest a structure for a research paper, propose a title or keywords for a research paper. 
+              Successful Page Load        ICLR uses cookies for essential functions only. We do not sell your personal
+                        information. Our Privacy Policy »    Accept                       The ICLR Logo above may be used on presentations. Right-click and choose
+                            download. It is a vector graphic and may be used at any scale. 
+     Useful links    About ICLR 
+ Sponsor / Exhibitor Information 
+ Press 
+        Contact   2710 E Corridor Dr, Appleton WI 54913 
+   Email  
+ Phone: +1-920-268-4789 
+           ICLR Proceedings at OpenReview 
+          

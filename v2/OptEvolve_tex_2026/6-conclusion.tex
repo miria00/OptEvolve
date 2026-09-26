@@ -1,0 +1,5 @@
+\section{Conclusion}
+
+OptEvolve addresses solver-family choice and LLM-proposal verification together. It builds reusable candidates from structured convex problems, checks convergence conditions \emph{before} timing certified scheme genomes, measures formulation and implementation costs on target hardware, and routes each instance to an evolved or existing engine. Exact-iteration certificates and numerical acceptance checks serve different purposes.
+
+On a budget-constrained family without a packaged specialist, a cold evolved solve is $20.6\times$--$35.0\times$ faster than the best available engine at $n=48{,}000$; across the held-out field, routing solves $27/28$ instances within budget. Specialists still win in other regimes, and exploration can dominate a first visit. The contribution is a division of labor: mathematical checks govern admissible iterations, measured costs guide solver choice, and the original-problem check governs returned answers.

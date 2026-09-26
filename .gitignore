@@ -1,0 +1,91 @@
+# --- secrets / local-only scripts ---
+.env
+.env.*
+1_setup.sh
+2_login.sh
+configs/atlas_config_local*.yaml
+credentials.*
+secrets.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# --- atlas / openevolve run artifacts ---
+atlas_runs/
+openevolve_output/
+*.jsonl
+logs/
+
+# --- downloaded / reproducible datasets ---
+datasets/netlib/*.mps
+datasets/netlib/*.compressed
+datasets/miplib/*.mps
+cvx_additional_sol_LP.json
+cvx_textbook_sol_LP.json
+v2/data/
+
+# --- external source checkouts ---
+v2/skydiscover/
+
+# --- generated papers / LaTeX build artifacts ---
+papers/OptAtlas_2026.pdf
+papers/LLM_verify_OTTER.pdf
+paper/*.pdf
+v2/papers/LSCOMO_book.pdf
+v2/OptAtlas_tex_2026/*.pdf
+v2/OptAtlas_tex_2026/**/*.pdf
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+
+# --- regenerable experiment results / figures ---
+runs/
+v2/results/
+v2/results_toy_backup/
+v2/assets/*.png
+
+# --- editor / os ---
+.vscode/
+.idea/
+.DS_Store
+
+CLAUDE.md
+data/
+
+# Large linked resources and external checkouts kept in the pre-cleanup archive.
+v2/data
+v2/fastmri
+v2/results
+v2/skydiscover
+v2/scripts/discovery/simpletes_arm/SimpleTES
+
+# Source-only publication: keep reference PDFs and generated drafts local.
+v2/OptAtlas_tex_2026
+v2/cake paper.pdf
+v2/papers/*.pdf
+v2/papers/**/*.pdf
+v2/papers/optivault_lasso_sota_repro_20260918/
+v2/docs/**/build/
+v2/OptEvolve_tex_2026/OPTEVOLVE_SKILL_20260920.md
+v2/scripts/discovery/simpletes_arm/runs/

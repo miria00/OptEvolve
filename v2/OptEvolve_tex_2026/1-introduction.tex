@@ -1,0 +1,43 @@
+\section{Introduction}
+
+Choosing and tuning a solver for a class of convex problems is usually described as a
+search problem. It is first a measurement problem. At its shipped defaults the fastest
+solver for total-variation denoising in our comparison field returns in $0.023$\,s and
+reaches no accuracy target at any image size; on cell-type deconvolution
+\texttt{scipy.nnls} returns faster still and does not satisfy the equality constraint at
+all. Ranked by wall clock, both win. Automating solver design is stymied by three
+distinct obstacles, and this is the first.
+
+\textbf{(i) A comparison cannot be trusted when every solver grades itself.} Reported
+times are times to each library's own stopping rule, so they are not commensurable, and
+a field missing the structure-specific specialist flatters whatever remains.
+\textbf{(ii) A fast generated iteration need not be a convergent one.} Timing
+LLM-proposed code establishes that it was quick on the instances tried, not that it
+converges, and no amount of benchmarking closes that gap.
+\textbf{(iii) The decisive choices span formulation, algorithm, and hardware, and they
+interact.} Moving a constraint into a projection changes the iteration count; the
+iteration count changes which device wins; the device changes which algorithm is
+cheapest per step. Tuning any one axis alone finds the wrong design.
+
+A splitting method handles parts of an objective through simpler updates, such as a gradient step and projection onto a constraint set. Their composition is an \emph{operator} mapping the solver's current state to its next state. Choosing that composition changes both convergence conditions and work per iteration; setup, compilation, and device placement further affect wall time. Since 2021, PDLP has combined primal--dual splitting with preconditioning, adaptive steps, and restarts; RLQP learns QP penalty updates; and HPR-LP combines another splitting scheme with adaptive policies \citep{Applegate2021Practical,Ichnowski2021Accelerating,Chen2024HPRLP}. LLM-driven search, notably FunSearch and AlphaEvolve, offers a way to propose further designs \citep{RomeraParedes2023Mathematical,Novikov2025AlphaEvolve}. Yet timing generated code cannot prove convergence, and a fast update need not beat a recognized specialist on the full solve. The question is how to search these design choices jointly while checking mathematical conditions and evaluating implementations and competing routes separately.
+
+We introduce \textbf{OptEvolve}. Given a structured convex problem family, training instances, a target instance and accuracy, and available devices, it builds reusable solver candidates and routes the target to an evolved method or an existing engine. It returns a point only after a common accuracy check on the original problem. A typed genome specifies a splitting scheme, parameters, formulation, projection implementation, and CPU or GPU backend. Before timing a candidate, a symbolic gate checks sufficient convergence conditions for five base schemes and certified relaxations; synthesized projections undergo separate numerical contract tests. A measured cost model prices these choices alongside recognized specialists. Thus the framework brings formulation, scheme, implementation, and hardware choices into one search and routing loop without asking benchmark success to establish convergence. The theorem applies to the stated exact scheme grammar, not arbitrary generated code or the adaptive policies of PDLP, RLQP, and HPR-LP.
+
+\paragraph{Contributions.}
+\begin{itemize}
+\item \textbf{Convergence by design, for (ii).} Under the stated assumptions, every admitted genome in the certified grammar converges in exact arithmetic: a gate checks construction conditions \emph{before} execution (Theorem~\ref{thm:soundness}). Numerical code is tested separately.
+\item \textbf{Evolve the whole solver, for (iii).} Search couples schemes and parameters with solution-preserving formulations, contract-tested projection implementations, and measured device costs; routing can also defer to an existing specialist. Tested synthesized projections reach the target on $9/9$ unseen instances versus $5/9$ for an unchecked faster implementation (Section~\ref{sec:exp:evolve}).
+\item \textbf{The three combine.} Cold first solves on a budget-constrained least-squares family with no packaged specialist are $20.6\times$--$35.0\times$ faster at $n=48{,}000$ than the best available engine. The routed system solves $27/28$ held-out instances within budget versus $26/28$ for the best-per-instance oracle over the completed competitor field and $18/28$ for LLM-only operator evolution (Section~\ref{sec:experiments}). First-visit exploration remains costly (Section~\ref{sec:limitations}).
+\item \textbf{OptEvolve-Bench, for (i).} We release the protocol and its measured
+field as a benchmark. Every entry is scored by an independently recomputed certificate
+on the original problem rather than by a solver's own stopping rule, the
+structure-specific specialist is a required member of each comparison field, and
+reachability, the finest tolerance a solver can certify at all, is reported beside
+time. The release pairs six application classes measured against packaged solvers at
+their defaults with $806$ acceptance records over $14$ engines on Netlib,
+Maros-Meszaros and generated LP, QP and conic instances. To the best of our knowledge
+it is the first optimization benchmark to treat solver-independent acceptance and
+field completion as requirements rather than conventions. The accuracy axis changes
+the verdict on three of the six application classes, in each case against a competitor
+that a wall-clock ranking records as fast (Section~\ref{sec:exp:regimes}).
+\end{itemize}

@@ -1,0 +1,241 @@
+% Section 2. Related work.
+% Style contract for this draft: no em-dash characters, no italics, plain
+% declarative prose, no hedging adverbs.
+%
+% PROVENANCE RULE. Every number describing OUR measurements carries a
+% "% source:" comment naming a file under /home/miria/OptEvolve/v2/results/.
+% Nothing here is drawn from atlas/ or from the 2026 manuscript.
+%
+% CITATION STATUS, READ BEFORE COMPILING. The literature verdicts positioned
+% against below come from the four-lane survey recorded in
+% docs/ICLR_SUBMISSION_ATTACK_PLAN.md. That survey is prose in this repo and has
+% no artifact under results/, so it sits outside the claim-ledger discipline and
+% needs a citation-verification pass of its own. Of the keys cited here, only
+% Applegate2021Practical, Lu2024HPRLP, ORToolsPDLP2026, Gleixner2021MIPLIB,
+% Stellato2020OSQP and Goulart2024Clarabel exist in refs.bib today. These keys
+% must be created and checked against the primary source before submission:
+% Lu2026cuPDLP, Lu2026cuPDLPx, Lu2026MPAX, PDOT2024, cuOpt2026,
+% CarsonHigham2018, Brisebarre2026, CuClarabel2024, LiangYang2026, cuOSQP2020,
+% KempkeKoch2025, PushakHoos2022, Hutter2014fANOVA, Xu2008SATzilla,
+% BischlASlib2016, Zheng2020Ansor, KernelFoundry2026, Su2012clSpMV,
+% KernelBenchVerified2026, Wolf1991TemporalBlocking.
+% No third-party numeric claim is printed except the OR-Tools default of 64,
+% which the coauthor should confirm against the source file before submission.
+%
+% COAUTHOR DECISION FLAGGED: the KernelBenchVerified2026 mention in
+% subsection 2.5 is a live scoop risk (arXiv:2607.16241, June 2026,
+% unpublished). It is cited as concurrent work, and the section leads with the
+% factorisation rather than with kernels. Cut that sentence if the coauthor
+% prefers no acknowledgement.
+
+\section{Related work}
+
+Two phrases here name different quantities. Arithmetic width is the floating
+point format the iterates are stored and updated in. Termination tolerance is
+the residual level at which a certificate is accepted. Work titled low precision
+sometimes means the second and not the first \citep{KempkeKoch2025}. We report
+the two apart throughout.
+
+\subsection{GPU first-order solvers for linear programming}
+
+PDLP established restarted averaged PDHG with presolve, diagonal
+preconditioning, adaptive step sizes and a primal weight
+\citep{Applegate2021Practical}. The accelerator line ports that method to GPUs:
+cuPDLP and cuPDLPx \citep{Lu2026cuPDLP,Lu2026cuPDLPx}, MPAX as a JAX
+reimplementation \citep{Lu2026MPAX}, HPR-LP with Halpern iteration and
+duplicated dual kernels \citep{Lu2024HPRLP}, PDOT for optimal transport
+\citep{PDOT2024}, and cuOpt as a shipped product \citep{cuOpt2026}. Each reports
+wall clock for one default configuration and attributes the result to the
+method. What is left open is the attribution.
+% source: results/tv_ffi_20260906/cadence_4090_v1/factorial.json (f64, device
+% loop), f32row_4090/factorial.json (f32_cert64, device loop),
+% f64host_4090/factorial.json (schedule, host phases),
+% results/bw_20260909/sz256_bw/factorial.json (second architecture). Train fold
+% of six scans, data seed 20260907, drawn from a pool of twelve
+% (cadence_4090_v1/protocol.json, cadence_4090_v1/data.json). Per-instance
+% vectors [1008,512,608,416,320,640], [1024,512,640,448,320,640] and
+% [1024,512,768,512,512,768] agree element by element on the two devices.
+On total variation denoising at $n=256$ with tolerance $10^{-4}$, over a train
+fold of six scans drawn with data seed 20260907 from a pool of twelve,
+Condat-Vu with banked steps needs a mean of 584.0, 597.3 and 682.7 iterations
+at cadences $K=16$, 64 and 256, and the same triple recurs under both
+arithmetic widths, under both execution structures and on a second GPU
+architecture, where the per-instance vectors agree element by element.
+% source: results/tv_ffi_20260906/kernelhost_4090/factorial.json and
+% catalog_4090/factorial.json. Neither archives a cadence-16 cell.
+The hand written kernel is archived only at $K=64$ and $K=256$, where it
+returns 597.3 and 682.7 like the XLA arm.
+% source: results/bw_20260909/sz128_bw/factorial.json and sz496_bw/factorial.json
+That invariance is a scope statement and not a law. It covers two GPU
+architectures, one problem family, one size and one tolerance, and its width
+half already fails one size away: at $K=64$ on the second architecture, float32 iterates
+need 586.7 against 576.0 at $n=128$ and 1077.3 against 1066.7 at $n=496$.
+% source: results/method_axis_20260909/factorial.json
+The method axis moves that count through its step sizes and not its name:
+Condat-Vu and PDHG return byte-identical per-instance counts at $K=256$, while
+balanced steps cost 4.3125x on iteration count and solve 0 of 6 instances at
+$10^{-6}$.
+
+\subsection{Reduced arithmetic width in optimisation}
+
+The accuracy ceiling of a reduced width is a theorem
+\citep{CarsonHigham2018,Brisebarre2026}, reduced-width iterates under
+full-precision certification already ship in cuOpt and CuClarabel, and cuOSQP
+measured the float32 against float64 envelope on GPU and attributed it to memory
+boundedness \citep{cuOpt2026,CuClarabel2024,LiangYang2026,cuOSQP2020,Stellato2020OSQP,Goulart2024Clarabel}.
+We claim none of that. What is left open is whether width is a per-iteration
+speed knob at all.
+% source: cadence_4090_v1 (device f64 0.013491 s), f32row_4090 (device f32
+% 0.013489 s), f64host_4090 (host f64 0.009042 s),
+% px999999_4090/factorial.json (host f32 0.005763 s), all condat_vu_banked at
+% K=256, N=682.7, mean of the six train instances
+On one device, at one cadence, at $n=256$, float32 buys 1.000x per iteration
+inside the traced device loop and 1.569x once the loop is chunked, so the payoff
+belongs to the loop structure that the width gene happened to select.
+% source: results/tv_ffi_20260906/f32row_4090/factorial.json (4090, K=16, 64
+% and 256), results/bw_20260909/sz256_bw/factorial.json (second architecture,
+% K=64 only at this size)
+The ceiling is also sharper than slower convergence. At $n=256$, Condat-Vu with
+float32 iterates and float64 certification solves 0 of 6 instances at
+$10^{-6}$, and PDHG solves 1 of 6. On the 4090 that holds at each of the three
+archived cadences $K=16$, 64 and 256; on the second architecture only $K=64$ is
+archived at this size, and it gives the same 0 of 6 and 1 of 6.
+
+\subsection{Certificate cadence as established engineering}
+
+Checking the certificate less often is a standard implementation choice.
+OR-Tools sets \texttt{termination\_check\_frequency} to 64 and annotates it as
+extra work \citep{ORToolsPDLP2026}, cuPDLPx captures one check interval as a
+replayed CUDA graph, and HPR-LP keeps a second dual kernel to avoid paying for
+the check. The field tunes this constant. What is left open is its status.
+% source: results/artifacts_20260910/fanova.json, decompositions
+% alg_x_prec_x_cadence__logSGM1__tol0.0001 and __tol1e-06, regenerated from
+% results/tv_ffi_20260906/cadence_4090_v1/factorial.json. Algorithm 0.0012 and
+% 0.3444 percent; cadence 39.4447 and 60.9751; precision by cadence 39.7328 and
+% 35.5144. Same values as DECOMPOSITION_REPORT.md section 4.
+An fANOVA decomposition \citep{Hutter2014fANOVA} over the twelve-cell algorithm
+by width by cadence factorial assigns 0.00\% of the variance to algorithm at
+$10^{-4}$ and 0.34\% at $10^{-6}$, against 39.44\% and 60.98\% for the cadence
+main effect and 39.73\% and 35.51\% for the width by cadence interaction.
+Cadence is the only gene entering both factors of the factorisation.
+% The per-iteration loop-structure cost that separates the cadence constant from
+% the check itself (11972 ns/iter at 32 outer trips against 10769 ns at one, with
+% the certificate term between -240 and +845 ns) is reported in Section 5.
+% source: results/finish_20260910/loop_mechanism.json
+
+\subsection{Algorithm selection, portfolios and AutoML nulls}
+
+SATzilla, ASlib and the MIPLIB feature line select among solvers using instance
+features \citep{Xu2008SATzilla,BischlASlib2016,Gleixner2021MIPLIB}. What is left
+open is whether the selected object carries variance. Scheme identity is inert
+to the last iteration here, so a portfolio over scheme names has nothing to
+win.
+% source: results/diagnostics_20260909/sharpness_4090.json
+The obvious replacement feature also fails: in logs, empirical sharpness
+correlates with iteration count at a pooled $r=+0.943$ over 17 converged
+instances but at $-0.539$ within netflow and $-0.842$ within the regular
+topology, a Simpson reversal and not a predictor.
+% source: results/netflow_20260909/grid_4090.json,
+% results/structure_20260909/structure_summary_4090.json
+What replaces it is an exact symbolic side condition: steps that are legal on
+total variation give $t s \|L\|^2 = 1.02267$ on netflow and are rejected in 24 of
+48 configurations before execution.
+% source: results/attack_plan_20260906/analysis/REPORT.md and analysis/summary.json
+\citet{PushakHoos2022} report that sequential per-hyperparameter tuning ties
+joint tuning in AutoML. Our catalog sweep reproduces that null, at 1.0000x on
+CPU at both tolerances and at worst 1.0305x on the 4090, and the factorisation
+explains it.
+
+\subsection{Kernel autotuning, per-device selection and temporal blocking}
+
+Per-device schedule search is established by Ansor, clSpMV and KernelFoundry
+\citep{Zheng2020Ansor,Su2012clSpMV,KernelFoundry2026}, and temporal blocking,
+which fuses several time steps into one pass over a tile, is standard in stencil
+computing \citep{Wolf1991TemporalBlocking}. Concurrent work revisits
+generated-kernel benchmarking \citep{KernelBenchVerified2026}. We claim neither
+as new. What is left open is the shape of the payoff and the cost of guessing
+it.
+% source: results/kernel_fusion_20260909/e2e/full_4090_sz{128,256,384,496}.json
+% and results/kernel_fusion_20260909/e2e_bw/full_bw_sz{128,256,384,496}.json
+The wrong tile is worse than not fusing: at $n=496$ on the 4090 the best tile
+gives 1.356x end to end and the worst gives 0.743x, and the two devices choose
+different tiles at $n=384$ and $n=496$.
+% source: results/kernel_fusion_20260909/large/large_4090_m2.json (992 px),
+% m3.json (1488 px), m4.json (1984 px); 128 px from e2e/full_4090_sz128.json
+The gain is U-shaped in problem size, at 1.571x for 128 px, 1.060x at 992 px and
+1.410x at 1984 px, which is launch overhead removed at one end and HBM traffic
+at the other.
+% source: results/diagnostics_20260909/roofline_4090.json, model M1 recomputed
+% against the e2e and large sweeps
+A cheap a-priori model does not substitute for the search: roofline with
+arithmetic intensity reaches mean Spearman 0.355 over seven sizes, picks the
+best tile 1 time in 7, and is anti-correlated at $-0.943$ at 128 px.
+
+\begin{table}[t]
+\centering
+\caption{Position of this work against the nearest lines. The right column
+lists only measurements reported in Section~5. Every iteration count in this
+table is a mean over the same train fold of six scans, data seed 20260907,
+drawn from a pool of twelve.}
+\label{tab:related}
+\small
+\begin{tabular}{@{}p{0.23\linewidth}p{0.34\linewidth}p{0.35\linewidth}@{}}
+\toprule
+Line of work & What it establishes & What is left open, and what we measure \\
+\midrule
+% source: results/tv_ffi_20260906/cadence_4090_v1, f32row_4090, f64host_4090,
+% results/bw_20260909/sz256_bw
+GPU first-order LP \citep{Applegate2021Practical,Lu2024HPRLP,cuOpt2026}
+& Wall clock for one default configuration per solver
+& At $n=256$, iteration count is unchanged across the two measured devices, both widths and both execution structures: 584.0 / 597.3 / 682.7 at $K=16$ / 64 / 256 \\
+% source: results/tv_ffi_20260906/{cadence_4090_v1,f32row_4090,f64host_4090,px999999_4090}
+Reduced width \citep{CarsonHigham2018,CuClarabel2024,cuOSQP2020}
+& Reduced-width iterates with full-precision certification, and an accuracy ceiling theorem
+& Width buys 1.000x per iteration in a traced loop and 1.569x in a chunked one, same device and cadence \\
+% source: results/artifacts_20260910/fanova.json, regenerated from
+% results/tv_ffi_20260906/cadence_4090_v1/factorial.json
+Cadence tuning \citep{ORToolsPDLP2026}
+& The constant is configurable and is tuned per solver
+& It is the only gene in both factors, at 39.44\% and 60.98\% of variance against 0.00\% and 0.34\% for algorithm \\
+% source: results/method_axis_20260909, results/netflow_20260909/grid_4090.json
+Portfolios and features \citep{Xu2008SATzilla,BischlASlib2016}
+& Instance features select among solvers
+& Scheme identity is inert; an exact symbolic gate rejects 24 of 48 netflow configurations before execution \\
+% source: results/attack_plan_20260906/analysis/summary.json
+AutoML nulls \citep{PushakHoos2022}
+& Sequential tuning ties joint tuning
+& The same null, at 1.0000x to 1.0305x, explained by which axes fail to interact \\
+% source: results/kernel_fusion_20260909/e2e, /large, results/diagnostics_20260909
+Autotuning and temporal blocking \citep{Zheng2020Ansor,Su2012clSpMV}
+& Per-device schedule search, time-step fusion in stencils
+& U-shaped gain in size, 0.743x for the wrong tile, roofline picks the best tile 1 of 7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% SCOPE GUARDS. Keep these in the checklist when the section is edited:
+% (1) two GPU architectures only, so no accelerator-portability claim is made
+%     anywhere in this section;
+% (2) no LLM-proposal advantage is claimed, here or elsewhere: the arms shared a
+%     proposal stream with 8 of 8 byte-identical draws;
+% (3) no joint-search advantage over sequential selection is claimed;
+% (4) no 1.41x figure appears, since it sits below the published cuOSQP float32
+%     against float64 envelope;
+% (5) the 584 / 597 / 683 triple is stated for condat_vu_banked only. It is NOT
+%     scheme-invariant at K=16, where pdhg_banked gives 578.67
+%     (results/tv_ffi_20260906/cadence_4090_v1/factorial.json). The text says
+%     "Condat-Vu with banked steps" for that reason;
+% (5a) the triple is NOT claimed across kernels. kernelhost_4090 and catalog_4090
+%     archive the custom kernel at K=64 and K=256 only, so no archived cell
+%     gives 584.0 under a hand written kernel. The text says so;
+% (6) width invariance of N is scoped to n=256. It fails on the Blackwell at
+%     n=128 (576.0 against 586.7) and n=496 (1066.7 against 1077.3):
+%     results/bw_20260909/sz128_bw/factorial.json and sz496_bw/factorial.json;
+% (7) the 0 of 6 float32 result at 1e-6 is condat_vu-specific; pdhg_banked
+%     solves 1 of 6. Both are stated above, and both are scoped to n=256: the
+%     4090 archives K=16, 64 and 256 (f32row_4090) and the Blackwell archives
+%     K=64 only at this size (bw_20260909/sz256_bw). The text says so;
+% (8) omega0 and the step-ratio rule are NOT cited in this section. The
+%     PDLP-rule regret figures did not reproduce from the saved artifacts and
+%     are forbidden until scripts/diagnostics scoring is committed under
+%     results/.

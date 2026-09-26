@@ -1,0 +1,197 @@
+
+
+
+
+\documentclass{article}
+
+\usepackage{iclr2027/iclr2027_conference,times}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{xr-hyper}       % links into the companion experiment log
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}
+% The experiment log is a separate document (explog.tex); its labels are
+% reachable here as LOG-<label>. Keep explog.pdf beside this PDF so these
+% references open the corresponding section in the companion document.
+% Both documents must be compiled twice for the cross-document numbers to settle.
+\externaldocument[LOG-]{explog}[explog.pdf]
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,backgrounds,calc,fit,positioning}
+\usepackage{amsthm}
+\usepackage{placeins}
+% Upright (non-italic) body for all theorem-like environments, per style rule.
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\newcommand{\iclrTODO}[1]{%
+  \par\noindent\fcolorbox{red}{yellow!15}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+      \centering\color{red}\Large\bfseries ICLR TODO: #1}}\par}
+
+\title{OptEvolve: Hardware-Aware Discovery of Certified Optimization Algorithms}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Miria Feng\thanks{Use footnote for providing further information
+    about author (webpage, alternative address), not for acknowledging
+    funding agencies.} \\
+  Department of Electrical Engineering\\
+  Stanford University\\
+  Stanford, CA 94305 \\
+  \texttt{miria00@stanford.edu} \\
+  \And
+  Nikhil Devanathan \\
+  Department of Electrical Engineering \\
+  Stanford University \\
+  Stanford, CA 94305 \\
+  \texttt{ndev@stanford.edu} \\
+  \And
+  Azalia Mirhoseini \\
+    Department of Computer Science \\
+    Stanford University, CA 94305 \\
+    \texttt{azalia@stanford.edu}
+    \And
+  Mert Pilanci \\
+  Department of Electrical Engineering \\
+  Stanford University \\
+  Stanford, CA 94305 \\
+  \texttt{pilanci@stanford.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+% Keep this commented for an anonymous submission. Uncomment only for the
+% camera-ready version after acceptance.
+%\iclrfinalcopy
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+Canonical optimization algorithms each excel in distinct regimes, yet
+identifying the optimal combination of formulation, algorithm, and hardware
+strategy for a target instance remains non-obvious. While recent algorithmic
+discovery frameworks utilize LLM-guided evolutionary search, naive source-code
+mutation fails to provide structural guarantees of mathematical convergence. We
+introduce \textbf{OptEvolve}, an automated framework for optimization modeling
+and verified solver synthesis. OptEvolve synthesizes and selects high-performing solvers for a target problem
+family by co-optimizing mathematical formulations, algorithmic schemes, and
+hardware-level operator implementations. Convergence is a design
+constraint in OptEvolve's monotone-operator calculus: a symbolic gate checks
+sufficient conditions for typed base-scheme and relaxation genomes before
+evaluation; synthesized projections pass separate contract tests. An empirical
+cost model guides the search
+across hyperparameters and stopping criteria, while optimizing GPU iteration
+fusion tiles on target devices. OptEvolve matches or beats domain-specialist
+solvers on structured problems and outperforms general-purpose baselines where
+no specialist exists. Furthermore, its targeted CUDA fusion tiles outperform XLA
+by up to $2.7\times$, and the framework generalizes effectively across unseen,
+held-out QP, LP, and SOCP benchmarks.
+\end{abstract}
+
+
+
+
+\input{1-introduction}
+\input{2-related-work}
+\input{3-methods}
+\input{4-theory}
+\input{5-experiments}
+\input{6-limitations}
+\input{6-conclusion}
+
+\section*{Reproducibility Statement}
+We will release a pip-installable implementation, reproduction scripts, solver
+genomes and certificates, configurations, seeds, and data manifests.
+Public data sources and evaluation conventions are documented in the companion
+experiment log (Sections~\ref{LOG-app:log:data} and~\ref{LOG-app:log:conventions}).
+Archived genomes allow rerunning the reported solvers without regenerating
+them; an independent LLM search may produce different proposals.
+
+\section*{Ethics Statement}
+We followed the ICLR Code of Ethics. No new patient data or human-participant
+experiments were collected. Retinal OCT images come from a previously released
+dataset with randomized patient identifiers; we measure denoising computation,
+not diagnostic accuracy. A solver's convergence certificate does not establish
+clinical safety; consequential uses require independent application-specific
+validation.
+
+\section*{AI Use Statement}
+Generative AI assisted with refining mathematical claims, proof writing,
+feedback on methods and experiments, implementation and code editing,
+literature analysis, identifying gaps, brainstorming improvements, manuscript
+editing, keywords, and interpretation of the executable-loop experiments. It
+was not used to generate synthetic data or provide critical proof ingredients.
+Translation, data cleaning or reformatting,
+and qualitative or thematic data analysis were not applicable.
+We independently checked mathematical arguments and cited sources, reviewed
+and tested assisted code, and take responsibility for all content and artifacts.
+
+\bibliographystyle{iclr2027/iclr2027_conference}
+\bibliography{refs}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+
+\input{appendix-theory}
+\input{appendix-theory-discussion}
+\input{appendix-methods}
+\input{appendix-experiments}
+\clearpage
+\input{appendix-llm-loop}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% The NeurIPS paper checklist is venue-specific and is intentionally excluded
+% from the ICLR submission:
+% \input{checklist.tex}
+
+
+\end{document}

@@ -1,0 +1,342 @@
+\section{Extended experimental results}
+\label{app:experiments}
+
+This appendix gives the per-family settings, additional comparisons, and measurements summarized in Section~\ref{sec:experiments}.
+
+\subsection{Evaluation protocol}
+
+\paragraph{One acceptance check.} Every returned point, from our solvers and
+from every competitor, is accepted only if its relative constraint violation and
+its objective gap relative to $1 + |f^\star|$ are both at most the target
+tolerance, where $f^\star$ is a high-accuracy reference objective computed once
+and outside every timed region. No solver is credited for its own stopping
+rule.
+
+\paragraph{A completed field.} Generic solvers (Clarabel, PIQP, HiGHS, OSQP,
+SCS, ECOS, ProxQP, PDLP and cuPDLPx) each run in their own interpreter. Where
+a structure-specific solver exists it is added: scikit-learn, celer and skglm
+for lasso and group lasso, LIBSVM and LIBLINEAR for SVMs, network simplex and
+minimum-cost flow for network LPs, and a Frank--Wolfe core-set method for the
+minimum enclosing ball.
+
+\paragraph{Timing.} Setup is timed on both sides, imports are excluded on both
+sides, baselines run in fresh processes, and repetitions are paired. Head-to-head
+speedups (Table~\ref{tab:specialists}) time our method in a fresh process with
+structure detection, formulation build, compilation and solve inside one clock
+and the persistent compilation cache disabled (the cold first solve), five
+repetitions, and also report a second solve in the same process (warm).
+Held-out solve rates come from routing runs with a 20\,s budget, where the first
+visit includes exploring candidates. Solves run on an RTX~4090 workstation and
+on an H100 80\,GB node, and each comparison names its machine.
+
+\subsection{Evolution produces solvers, formulations and operators}
+
+\paragraph{Parameters and schemes: total-variation denoising.}
+The first cell is anisotropic TV denoising,
+$\min_x \tfrac12\|x - y\|^2 + \lambda\|Dx\|_1$ with $\lambda = 0.1$, on real
+clinical retinal optical coherence tomography (OCT) B-scans from the Kermany
+dataset \citep{Kermany2018Identifying}: $128\times128$ patches, with the raw
+image as $y$, 6 training and 3 held-out patches. A solve terminates at relative
+duality gap $\le 10^{-4}$ (Section~\ref{sec:methods}). The baseline is the
+fastest of the four base schemes at textbook, typechecked defaults
+(Condat--V\~u at $0.346$\,s training SGM-10). Search runs 10 generations of 8
+proposals with elitism 1, and champions are evaluated once on the held-out
+patches.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lllll}
+\toprule
+config & champion genome & train SGM & held-out SGM & held-out fail \\
+\midrule
+default (certified) & \texttt{condat\_vu} $\tau{=}0.5,\ \sigma{=}0.186$ & 0.346s & 0.621s & 0/3 \\
+random-evolved & \texttt{condat\_vu} $\tau{=}0.024,\ \sigma{=}3.70$ & 0.061s & 0.073s & 0/3 \\
+LLM-evolved & \texttt{condat\_vu} $\tau{=}0.05,\ \sigma{=}1.0,\ \rho{=}1.9$ & \textbf{0.036s} & \textbf{0.073s} & 0/3 \\
+\bottomrule
+\end{tabular}
+\caption{TV-on-OCT cell. Both evolved policies beat the certified textbook
+default by $\approx 8.5\times$ on held-out clinical images with zero failures.
+The LLM champion's certificate: $\tau L_f/2 + \tau\sigma\ell^2 = 0.425 < 1$,
+averagedness $\theta = 0.511$, $\rho\,\theta = 0.97 < 1$.}
+\label{tab:tv-results}
+\end{table}
+
+The evolved policy is $8.5\times$ faster than the textbook default on held-out
+images (Table~\ref{tab:tv-results}), and it is not a standard tuning: it
+shrinks the primal step $10\times$, grows the dual step $5.4\times$, retreats
+from the stepsize-condition boundary ($0.9925 \to 0.425$), and spends the freed
+slack on near-maximal certified over-relaxation ($\rho\,\theta = 0.97$;
+Remark~\ref{rem:relaxation-window}). Invalid proposals were rejected
+symbolically without consuming solver budget, and no uncertified configuration
+was executed. The LLM-guided and random runs tie on held-out quality, and
+because they shared a proposal stream we make no sample-efficiency claim from
+this cell; Section~\ref{sec:exp:llm} compares against LLM-only evolution
+instead. This cell measures evolution against the textbook defaults of the
+same scheme, not against a completed field: no external TV solver is run here,
+and anisotropic TV-L2 is exactly solvable by parametric max-flow, so the
+$8.5\times$ is an internal ablation and not a claim about the state of the art
+for this problem.
+
+\paragraph{Operators: certified synthesis.}
+Table~\ref{tab:operators} compares implementations of the projection onto a box
+intersected with a hyperplane, the operator that relocation needs on the
+budget-constrained families. The best synthesized operator is $10.6\times$
+faster than the bisection seed the search started from and $3.16\times$ faster
+than the textbook breakpoint search on the RTX~4090. A black-box LLM search
+without the certificate found an operator that is faster still per call, but
+it fails 16 of the 17 contract clauses (maximum error $9.97$) and, used inside
+a solver, reaches the target on only $5$ of $9$ unseen instances; the
+certified operators reach it on $9$ of $9$, at exactly the iteration count of
+the reference projection, on both GPUs.
+
+Per-call speed is not end-to-end speed. With the formulation fixed and only the
+projection swapped, on knapsack\_ridge at $n = 12{,}000$ the synthesized
+operator's cold first solve is $1.16\times$ to $1.29\times$ faster than with a
+hand-written 12-step Newton projection across tolerances $10^{-3}$ to
+$10^{-6}$, and $1.27\times$ to $1.56\times$ faster than the textbook breakpoint
+search on a warm solve. Most of the speedup over generic solvers comes from the
+formulation: relocation with the hand-written Newton projection is already
+$3.7\times$ faster than the best engine at $10^{-4}$. Operators evolved in a
+later agent session match the earlier synthesized ones to within about $5\%$.
+
+\begin{table}[t]
+\centering
+\small
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrcc}
+\toprule
+projection onto $\{lo \le x \le hi,\ a^{\top}x = b\}$ & RTX 4090 ($\mu$s) & H100 ($\mu$s) & certified & unseen instances \\
+\midrule
+bisection, 60 steps (search seed) & 395.67 & 439.09 & yes & -- \\
+Newton, 12 steps (hand-written) & 165.90 & 113.42 & yes & -- \\
+breakpoint search \citep{Kiwiel2008Breakpoint} & 117.88 & 69.71 & yes & -- \\
+synthesized, round 1 & 47.54 & 59.44 & yes & 9/9 \\
+synthesized, round 2 & \textbf{37.35} & \textbf{33.15} & yes & 9/9 \\
+black-box LLM search, no certificate & 12.04 & 8.24 & no (1/17) & 5/9 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Per-call cost of the box-hyperplane projection, from per-device
+calibration in the gene pool. ``Unseen instances'' counts held-out instances on
+which a solver using the operator reaches the target.}
+\label{tab:operators}
+\end{table}
+
+\paragraph{Formulations.} The formulation gene moves iteration counts far more
+than any parameter: across the formulations of one capacitated routing LP the
+iteration count spans $1{,}233\times$, and two formulations whose operator norms
+differ by $0.056\%$ differ by $154.7\times$ in iterations. Because the
+per-iteration cost also changes, the router decides from measured time, not
+from iterations (Section~\ref{sec:limitations}).
+
+\subsection{Wins against structure-specific solvers}
+
+\begin{table}[t]
+\centering
+\small
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llrlrrrr}
+\toprule
+ & & ours, cold & best engine & \multicolumn{3}{c}{speedup, cold first solve} & warm \\
+\cmidrule(lr){5-7}
+instance (held-out) & route chosen & $10^{-4}$ (s) & $10^{-4}$ (s) & $10^{-3}$ & $10^{-4}$ & $10^{-6}$ & $10^{-4}$ \\
+\midrule
+knapsack\_ridge, $n = 12{,}000$ & relocation + synthesized op. & 1.04 & Clarabel 4.69 & $4.08\times$ & $4.49\times$ & $5.00\times$ & $9.17\times$ \\
+knapsack\_ridge, $n = 48{,}000$ & relocation + synthesized op. & 8.10 & Clarabel 204.3 & $34.98\times$ & $25.22\times$ & $20.57\times$ & $72.79\times$ \\
+robust LP, $n = 5{,}000$ & GPU first-order, standard form & 1.77 & Clarabel 15.71 & $12.64\times$ & $8.86\times$ & $5.63\times$ & $11.41\times$ \\
+SVM dual, $n = 20{,}000$ & relocation + synthesized op. & 1.20 & Clarabel 1.24 & $0.84\times$ & $1.03\times$ & $1.11\times$ & $1.97\times$ \\
+budget band, $n = 80{,}000$ & relocation + synthesized op. & 1.33 & PIQP 0.32 & $0.24\times$ & $0.24\times$ & $0.25\times$ & $0.42\times$ \\
+group lasso, $n = 10{,}000$ & cone relocation & 1.02 & celer 0.57 & $0.57\times$ & $0.56\times$ & $0.55\times$ & $0.88\times$ \\
+\bottomrule
+\end{tabular}%
+}
+\caption{The routes the system chose on held-out instances, timed head to head
+on an RTX~4090. Ours is a fresh process with detection, build, compilation and
+solve in the clock and no persistent compilation cache (cold), or a second solve
+in the same process (warm); CUDA context creation, about $0.22$\,s, is outside
+the clock. The best engine is the fastest accepted result over every generic
+solver and every recognized specialist, each run in a fresh process with a
+600\,s limit. Paired geometric means over five repetitions;
+intervals are in the experiment log, Section~\ref{LOG-app:field}.}
+\label{tab:specialists}
+\end{table}
+
+Table~\ref{tab:specialists} times the routes the system chose on held-out
+instances. The budget-constrained least-squares family has no packaged solver;
+its natural specialist is projected gradient with an exact projection onto the
+box and budget constraint, and the system builds that method itself. A cold
+first solve is $4.1\times$ to $5.0\times$ faster than every available engine at
+$n = 12{,}000$ and $20.6\times$ to $35.0\times$ faster at $n = 48{,}000$, where
+Clarabel needs $204$ to $245$\,s and PIQP and ECOS do not finish in $600$\,s. The
+margin grows with size: on the same family at tolerance $10^{-4}$ it is
+$4.58\times$ at $n = 12{,}000$, $11.37\times$ at $24{,}000$ and $43.09\times$ at
+$48{,}000$, and at $n = 100{,}000$ no engine returns an answer (Clarabel exceeds
+a 24\,GB memory limit and PIQP returns nothing in $600$\,s) while ours takes
+$25.6$\,s. On the robust LP the evolved route is $12.6\times$ faster at
+$10^{-3}$ and $5.6\times$ at $10^{-6}$. On three of the six instances the route
+the system chose loses when timed head to head: the SVM dual is at parity or slower,
+PIQP is $4\times$ faster on the budget band, and celer is about $1.8\times$
+faster on group lasso. The router's earlier cost predictions for these
+instances were too optimistic, which Section~\ref{sec:limitations} discusses.
+
+\paragraph{Lasso paths with dense solutions.} On a 100-value lasso
+regularization path, scored per regularization value by the lasso duality gap,
+with celer and scikit-learn each run as shipped, the batched
+GPU method wins once the solution support approaches the number of rows. At
+$n = 10{,}000$ and tolerance $10^{-4}$ the speedup grows with density from
+$0.52\times$ to $1.52\times$ to $15.8\times$ ($3.28$\,s against $51.80$\,s), and
+at $10^{-6}$ it is $5.07\times$ ($18.27$\,s against $92.68$\,s). At
+$n = 50{,}000$ it is $7.34\times$ at $10^{-4}$ ($29.55$\,s against
+$216.92$\,s), and at $10^{-6}$ our method certifies all $100$ values in
+$177$\,s while the best completed specialist run certifies $72$ in $641$\,s.
+
+\paragraph{Other specialist comparisons.} On the SVM family at
+$n_{\mathrm{var}} = 110{,}000$ and tolerance $10^{-6}$, LIBLINEAR
+\citep{Fan2008LIBLINEAR} takes $43.0$\,s on the identical instance, against
+$10.35$\,s for our method in the first-reported measurement; under the corrected
+accounting our margin over Clarabel on this family is $3.78\times$
+$[3.67, 3.90]$. On elastic-net logistic regression over the epsilon data
+set, the method is $2.28\times$ $[1.73, 3.01]$ faster than the GPU specialist
+cuML \citep{NVIDIA2026cuML} on ten of ten penalty settings for a repeated
+solve, and $0.06\times$ on a first solve with an empty compilation cache.
+
+\paragraph{Across the held-out set.} Over 28 held-out instances spanning QP,
+LP, SOCP, Maros--M\'esz\'aros, Netlib and CBLIB, the routed system solves $27$
+within a 20\,s budget, against $26$ for the best-per-instance oracle over the
+completed field and $25$ for the best single engine (Clarabel). On the $25$
+instances both solve, it is faster on $13$ and the oracle on $12$, with a
+geometric-mean speedup of $1.29\times$ on repeat visits and $0.035\times$ on
+first visits, when exploration dominates.
+
+\subsection{Against general-purpose solvers at scale}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrl}
+\toprule
+family & $n_{\mathrm{var}}$ & speedup over Clarabel & $95\%$ interval \\
+\midrule
+SVM dual & 550{,}000 & $7.91\times$ & $[6.34, 9.88]$ \\
+SVM & 110{,}000 & $3.78\times$ & $[3.67, 3.90]$ \\
+portfolio & 500{,}707 & $2.37\times$ & $[1.78, 3.16]$ \\
+\bottomrule
+\end{tabular}
+\caption{Speedup over Clarabel at tolerance $10^{-6}$, three seeds, every
+repetition paying its own setup, under the corrected accounting of the
+experiment log, Section~\ref{LOG-app:accounting}. Families appear here only where
+Clarabel is the strongest available engine. Huber, lasso and the minimum
+enclosing ball are excluded because their structure-specific solvers are faster
+than our method (Section~\ref{sec:limitations}), and the control family is
+excluded because OSQP, already in our own field, is faster than Clarabel at that
+size.}
+\label{tab:general}
+\end{table}
+
+Against a general-purpose interior-point solver, the evolved formulations win
+on every family in Table~\ref{tab:general}, and every interval excludes $1$.
+The wins are size dependent: the SVM dual crosses over between
+$n_{\mathrm{var}} = 38{,}500$ ($0.79\times$) and $55{,}000$ ($1.45\times$), and
+portfolio between $100{,}316$ ($0.92\times$) and $250{,}500$ ($1.57\times$).
+
+\subsection{Against LLM-only evolution}
+
+
+
+The LLM-only arm evolves an operator with the same LLM and the same search
+engine, but without the certificate, the gene pool or the router, and uses it in a
+fixed pipeline. It solves $18$ of $28$ held-out instances against $27$ for the
+full system, and its geometric-mean repeat solve is $23\times$ slower
+(Table~\ref{tab:llm}). Its first visit is slightly faster because it has a
+single candidate to run. The faster uncertified operator passes only 1 of 17
+contract clauses and reaches the target on 5 of 9 unseen instances, against 9
+of 9 for the contract-checked operators (Table~\ref{tab:operators}). LLM token
+counts were not logged per arm, so the two arms are matched on search
+iterations, not on tokens.
+
+\subsection{Choosing CPU or GPU}
+
+The router's device choices follow instance structure and size. It sends
+sparse lasso to a CPU coordinate-descent specialist (celer, a routed cost of
+$11.9$\,ms at $n = 5{,}000$), small Maros--M\'esz\'aros and Netlib instances to
+a CPU interior-point method (about $1$\,ms), and large structured QPs and robust
+LPs to evolved GPU methods (Table~\ref{tab:specialists}). On MIPLIB LP
+relaxations, $20$ of the $22$ instances solved within budget are routed to CPU
+interior-point engines and $2$ to our first-order formulations. The
+payoff of a formulation also depends on the device: on the capacitated routing
+LP the simplex formulation's advantage is $5.6\times$ on the GPU and $45.0\times$
+on the CPU, and one SVM instance loses at $0.41\times$ on the H100 and wins at
+$1.22\times$ on the RTX 4090 because the dominant work is single-threaded host
+code and the H100 node has the weaker single thread.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+device, precision & tolerance $10^{-4}$ & $10^{-6}$ & $10^{-8}$ \\
+\midrule
+H100, float64 & 23.01\,s & \textbf{45.60\,s} & \textbf{76.88\,s} \\
+H100, float32 & \textbf{9.69\,s} & never & never \\
+RTX 4090, float64 & 35.64\,s & 71.77\,s & 121.83\,s \\
+RTX 4090, float32 & 16.52\,s & never & never \\
+\bottomrule
+\end{tabular}
+\caption{The same batched lasso cross-validation workload ($n = 50{,}000$, 5
+folds, 100 regularization values) on two devices and two precisions. float32
+stalls at a relative gap of about $2\times10^{-5}$, so the winning pair changes
+with the target.}
+\label{tab:device}
+\end{table}
+
+Table~\ref{tab:device} shows that the winning pair of device and precision
+changes with the accuracy target. At $n = 10{,}000$ and $10^{-4}$ the consumer
+RTX 4090 in float32 is the fastest of the four ($1.63$\,s). The H100's float64
+advantage over the RTX 4090 is $1.6\times$, far below the ratio of their float64
+throughput and below their $3.3\times$ memory-bandwidth ratio. On this
+cross-validation workload the CPU specialists are faster still, which is the
+routing decision the system should and does make.
+
+The kernel a device should run is also a per-device decision. Sweeping 21
+temporally fused CUDA tiles against XLA's compiled loop on an RTX 4090 and an
+H100, the best tile differs at five of six problem sizes, the fused kernel is
+$1.15\times$ to $1.66\times$ faster than XLA on the 4090 and $1.95\times$ to
+$2.74\times$ faster on the H100, and carrying one device's choice to the other
+costs $1.06\times$ to $1.63\times$. A selector that reads the CUDA device
+properties reproduces each machine's choice from one table with no recompile,
+and the kernel is bitwise identical to the unfused iteration at relaxation $1$
+on both devices (experiment log, Section~\ref{LOG-app:log:fusion}).
+
+\paragraph{The device is a priced candidate, and the crossover is measurable.}
+A candidate is a triple (formulation, operator, device): the same formulation on
+this machine's GPU and on its CPU are two candidates, sharing one measured
+iteration count and priced from each device's own calibration, with a device
+this process has no backend for declined rather than guessed at. Measuring our
+method on both devices for all 28 held-out instances, four repetitions, the
+iteration count is device independent as the cost model assumes (median ratio
+$1.0000$), and the two machines disagree about which device to use: at
+tolerance $10^{-3}$ the GPU is faster on 18 instances and the CPU on 2 on the
+RTX 4090, against 14 and 6 on the H100.
+
+What predicts the crossover is not the instance size. Ranked by $\mathrm{nnz}(A)$,
+13 of 27 instances fall on the wrong side of any threshold, because relocation
+removes rows from the operator the iteration actually applies. Ranked by the
+work one iteration does, $\mathrm{nnz}(L) + n$, the CPU has the cheaper
+iteration up to about $14{,}400$ and the GPU from about $22{,}400$, and on the
+RTX 4090 no instance falls on the wrong side of that band. Below it the GPU is
+launch bound by up to $600\times$ per iteration; above it the GPU wins by up to
+$142\times$. Setup does not discriminate between the devices, which is why
+several small instances tie on total time despite a large per-iteration gap.
+
+With device selection enabled the router picks the faster device on 14 of the 15
+decidable instances, and on 9 of 9 when it chose the same formulation and
+operator the ground truth timed, so only the device differs; its one mistake
+costs $1.37\times$. The honest accounting is that this buys little on this
+workload: repeat-visit time improves by $2\%$ while first-visit wall time rises
+$1.70\times$ from the extra exploration, and 22 of the 28 instances already
+route to a CPU engine by recognition rather than by the device axis. The cost
+model is biased low on both devices, predicting $0.75\times$ of measured time on
+the GPU and $0.63\times$ on the CPU, but the bias is common enough that it still
+orders the two devices correctly on 15 of 15 instances, which is what the
+decision requires.

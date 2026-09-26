@@ -1,0 +1,351 @@
+% NOTE (2026-08-30): theory appendix created in the audit-driven restructure.
+% Contains the proofs for Section 4 (sec:theory). Style rules: never use the
+% em-dash; upright (non-italic) body for theorem-like environments.
+\section{Proofs for Section~\ref{sec:theory}}
+\label{app:theory}
+
+Throughout this appendix the standing assumptions of the setup paragraph of
+Section~\ref{sec:theory} are in force. Because every metric $H\succ0$ makes
+$\langle u,Hv\rangle$ an inner product on a finite-dimensional space, all
+statements are statements about a Hilbert space, and we work directly in
+$\|\cdot\|_H$ without rescaling.
+
+\subsection{Convergence and rate for certified iterations}
+
+\begin{proposition}[Krasnosel'ski\u{\i}--Mann convergence with a
+last-iterate rate]
+\label{prop:km}
+Let $H\succ0$, let $T$ be $\theta$-averaged in $\|\cdot\|_H$ with
+$\theta\in(0,1)$, and let $\operatorname{Fix}T\neq\emptyset$. Then the
+iteration $z_{k+1}=Tz_k$ converges, from any $z_0$, to some
+$z^\star\in\operatorname{Fix}T$; the residual $\|z_{k+1}-z_k\|_H$ is
+nonincreasing in $k$; and, for every $k\geq0$,
+\begin{equation}
+ \|z_{k+1}-z_k\|_H^2
+ \;\leq\;
+ \frac{\theta}{(1-\theta)\,(k+1)}\;
+ \operatorname{dist}_H^2\!\left(z_0,\operatorname{Fix}T\right).
+ \label{eq:km-rate}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Write $T=(1-\theta)I+\theta S$ with $S$ nonexpansive in $\|\cdot\|_H$; all
+norms in this proof are $\|\cdot\|_H$. Fix any
+$z^\star\in\operatorname{Fix}T$. Expanding $z_{k+1}=(1-\theta)z_k+\theta
+Sz_k$ with the identity
+$\|(1-\theta)a+\theta b\|^2=(1-\theta)\|a\|^2+\theta\|b\|^2
+-\theta(1-\theta)\|a-b\|^2$, at $a=z_k-z^\star$ and $b=Sz_k-z^\star$, and
+bounding $\|Sz_k-z^\star\|\leq\|z_k-z^\star\|$ by nonexpansiveness gives the
+Fej\'er inequality
+\begin{equation}
+ \|z_{k+1}-z^\star\|^2
+ \;\leq\;
+ \|z_k-z^\star\|^2-\frac{1-\theta}{\theta}\,\|z_{k+1}-z_k\|^2 .
+ \label{eq:fejer}
+\end{equation}
+The map $T$ is nonexpansive, so
+$\|z_{k+2}-z_{k+1}\|\leq\|z_{k+1}-z_k\|$. Summing \eqref{eq:fejer} over the
+first $k+1$ iterations, keeping only the last (smallest) residual, and
+minimizing over $z^\star$ yields \eqref{eq:km-rate}. By \eqref{eq:fejer} the
+iterates are bounded and $\|z_{k+1}-z_k\|\to0$, so by continuity every
+cluster point of $(z_k)$ is fixed by $T$; reusing \eqref{eq:fejer} with such
+a cluster point as $z^\star$ shows $\|z_k-z^\star\|$ is nonincreasing and
+vanishes along a subsequence, hence $z_k\to z^\star$. This argument is the
+Krasnosel'ski\u{\i}--Mann theorem with its modern rate
+\citep[Theorem~1]{RyuYin2022LargeScale}; see also
+\citet{Krasnoselskii1955Two}, \citet{Mann1953Mean}, and
+\citet{BauschkeCombettes2017Convex}.
+\end{proof}
+
+\begin{remark}[Monitored residual, normalization, and summability]
+\label{rem:monitored-residual}
+The runtime monitor reports $\|z_{k+1}-z_k\|_{H_G}$, the step residual of the
+certified map that is actually iterated. For a genome
+$\mathrm{relax}_\rho(G')$ the compiled map is
+$T_G=(1-\rho)I+\rho T_{G'}$, so
+$z_{k+1}-z_k=\rho\,(T_{G'}z_k-z_k)$: the two residuals differ by the factor
+$\rho$, which matters when comparing genomes with different relaxation genes,
+and \eqref{eq:km-rate} divided by $\rho^2$ bounds the unrelaxed fixed-point
+residual $\|T_{G'}z_k-z_k\|_{H_G}^2$. Summing \eqref{eq:fejer} also gives the
+summability estimate
+$\sum_{k=0}^{\infty}\|z_{k+1}-z_k\|_{H_G}^2\leq
+\frac{\theta_G}{1-\theta_G}\operatorname{dist}_{H_G}^2
+(z_0,\operatorname{Fix}T_G)$.
+\end{remark}
+
+\subsection{Base-scheme certificates}
+
+\paragraph{Reference instantiations.}
+The following exact updates fix what the five rows of
+Table~\ref{tab:certificates} mean for
+$F=f+g+h\circ L$; $\operatorname{prox}_{\alpha q}$ denotes the exact
+proximal map of $q$, and $h^*$ is the Fenchel conjugate of $h$. A row is
+admissible only if its stated proximal maps can be evaluated. In particular,
+writing $g+h\circ L$ as one term does not make its proximal map available.
+For FBS, $z=x$ and
+$x^+=\operatorname{prox}_{\alpha(g+h\circ L)}(x-\alpha\nabla f(x))$.
+For DRS, set $a=g$, $b=f+h\circ L$ and take
+$x=\operatorname{prox}_{\alpha a}(z)$,
+$y=\operatorname{prox}_{\alpha b}(2x-z)$,
+$z^+=z+y-x$; the decoder is $x$.
+For Davis--Yin, set $a=g$, $b=h\circ L$ and take
+$x=\operatorname{prox}_{\alpha a}(z)$,
+$y=\operatorname{prox}_{\alpha b}(2x-z-\alpha\nabla f(x))$,
+$z^+=z+y-x$; the decoder is again $x$.
+For the primal--dual rows, write $z=(x,u)$ and take
+\begin{align*}
+ x^+&=\operatorname{prox}_{\tau g}
+       \bigl(x-\tau(\nabla f(x)+L^\top u)\bigr),\\
+ u^+&=\operatorname{prox}_{\sigma h^*}
+       \bigl(u+\sigma L(2x^+-x)\bigr).
+\end{align*}
+This is Condat--V\~u with decoder $\pi(x,u)=x$; PDHG is the
+$\nabla f=0$ specialization. A nonzero $f$ can instead be absorbed into
+a proximable primal term, but only when its exact prox is available.
+The fixed points of the first three maps decode to minimizers, and those
+of the last two are saddle pairs, under the assumptions of
+Section~\ref{sec:theory}.
+
+\begin{lemma}[Base schemes]
+\label{lem:base-certificates}
+For each base scheme of Table~\ref{tab:certificates} with positive stepsizes
+satisfying the gate inequality, the pair $(H_G,\theta_G)$ of the table, with
+$\theta_G=1/(2-c_G)$, together with the scheme's standard decoder $\pi_G$,
+is a construction certificate in the sense of
+Definition~\ref{def:certificate}.
+\end{lemma}
+
+\begin{proof}
+We first establish every row with the true norm $\|L\|$ in place of
+$\ell$, then account for the conservative bound.
+
+Since $\nabla f$ is $(1/L_f)$-cocoercive by the Baillon--Haddad theorem
+\citep{BaillonHaddad1977Quelques}, the forward step $I-\alpha\nabla f$ is
+$(\alpha L_f/2)$-averaged for $\alpha\in(0,2/L_f)$, and the proximal step is
+$\tfrac12$-averaged. A composition of $\theta_1$- and $\theta_2$-averaged
+maps is $(\theta_1+\theta_2-2\theta_1\theta_2)/(1-\theta_1\theta_2)$-averaged
+\citep[Theorem~27]{RyuYin2022LargeScale}, a constant due to
+\citet{OguraYamada2002Nonstrictly}; see also
+\citet{CombettesYamada2015Compositions}. At $\theta_1=\tfrac12$ and
+$\theta_2=c$ it is $1/(2-c)$; this is the FBS row, and the Davis--Yin row is
+the same constant \citep[Theorem~28]{RyuYin2022LargeScale}, established by
+\citet{DavisYin2017Three}. DRS is
+$\tfrac12\bigl(I+R_{\alpha A}R_{\alpha B}\bigr)$, a composition of reflected
+resolvents, hence firmly nonexpansive for every $\alpha>0$
+\citep[\S2.7]{RyuYin2022LargeScale}, a fact going back to
+\citet{LionsMercier1979Splitting}. For the primal--dual rows,
+$M_{\tau\sigma}\succ0$ exactly when $\tau\sigma\|L\|^2<1$, and in that metric
+PDHG \citep{ChambollePock2011First} is a proximal-point iteration on the
+saddle subdifferential, hence firmly nonexpansive in
+$\|\cdot\|_{M_{\tau\sigma}}$ \citep[\S3.3]{RyuYin2022LargeScale}; see also
+the contraction analysis of \citet{HeYuan2012Convergence}. Condat--V\~u
+\citep{Condat2013Primal,Vu2013Splitting} is variable-metric
+forward--backward in the same metric \citep{CombettesVu2014Variable}, and its
+forward step is $c$-averaged in $\|\cdot\|_{M_{\tau\sigma}}$ with
+$c=\tau L_f/\bigl(2(1-\tau\sigma\|L\|^2)\bigr)$, so composition gives
+$1/(2-c)$ again \citep[\S3.3]{RyuYin2022LargeScale}. The inequality
+$\tau L_f/2+\tau\sigma\|L\|^2<1$ is equivalent, for $\tau,\sigma>0$, to the
+conjunction of $\tau\sigma\|L\|^2<1$ and $c<1$, so a single inequality
+delivers both (C1) and a positive-definite metric.
+
+Now let $\ell\geq\|L\|$ be the supplied bound and let $c_G$ denote the
+tabulated forward-step constant computed from $\ell$. The checked
+inequalities in $\ell$ imply the corresponding inequalities in $\|L\|$, so
+$H_G\succ0$, and the true forward-step constant $c$ computed from $\|L\|$
+satisfies $c\leq c_G<1$, so the compiled iteration is $\theta$-averaged with
+$\theta=1/(2-c)$. A $\theta$-averaged map is also $\theta'$-averaged for
+every $\theta'\in[\theta,1)$: writing $T=(1-\theta)I+\theta S$ gives
+$T=(1-\theta')I+\theta'S'$ with $S'=(1-\theta/\theta')I+(\theta/\theta')S$,
+a convex combination of nonexpansive maps. Since
+$\theta=1/(2-c)\leq1/(2-c_G)=\theta_G<1$, the pair $(H_G,\theta_G)$
+certifies (C1), exactly when $\ell=\|L\|$ and conservatively otherwise.
+
+For (C2) and (C3), no bijection between fixed points and solutions is
+needed; it suffices that fixed points exist and that every fixed point
+decodes to a solution. For the primal--dual schemes the state is the saddle
+pair and, because $M_{\tau\sigma}\succ0$, the fixed points of the
+(variable-metric) proximal-point and forward--backward iterations are
+exactly the zeros of the saddle operator, i.e.\ the saddle set, which is
+nonempty by assumption; $\pi_G$ is the primal coordinate
+\citep[\S3.3]{RyuYin2022LargeScale}. For FBS and Davis--Yin the fixed points
+are exactly the solutions of the associated inclusion (for Davis--Yin after
+applying the decoder $\pi_G=\operatorname{prox}_{\alpha g}$), and for DRS
+every fixed point $z$ satisfies
+$\operatorname{prox}_{\alpha g}(z)\in\mathcal X^\star$ while every solution
+arises from at least one fixed point; these standard correspondences are
+\citep[\S2.7]{RyuYin2022LargeScale}. In each case the nonempty saddle set
+yields a fixed point through the correspondence, giving (C2), and the
+decoder maps all of $\operatorname{Fix}T_G$ into $\mathcal X^\star$, giving
+(C3).
+\end{proof}
+
+\subsection{Transfer across formulations}
+
+\begin{proposition}[Formulation transfer]
+\label{prop:formulation-transfer}
+Suppose a transformed composite objective $\widetilde F$ satisfies the
+standing assumptions of Section~\ref{sec:theory}, and an exact recovery
+map $R$ satisfies
+$R(\operatorname*{argmin}\widetilde F)\subseteq
+\operatorname*{argmin}F$, where $F$ is the original objective in
+\eqref{eq:composite}. If the gate certifies a base scheme and its
+relaxation for $\widetilde F$, with decoder $\widetilde\pi_G$, then the
+iteration converges in its transformed state space and its limit decodes
+via $R\circ\widetilde\pi_G$ to a minimizer of $F$.
+\end{proposition}
+
+\begin{proof}
+Theorem~\ref{thm:soundness} and Corollary~\ref{cor:convergence} applied
+to $\widetilde F$ give convergence to a fixed point whose image under
+$\widetilde\pi_G$ minimizes $\widetilde F$. Applying the assumed recovery
+map places that minimizer in $\operatorname*{argmin}F$. The gate inequality
+and metric must be established anew for the transformed operator; an
+equivalent objective alone does not transfer averagedness.
+\end{proof}
+
+When relocation moves a constraint into an indicator term, evaluating the
+new proximal map requires an exact projection onto that constraint set.
+Static row scaling or equilibration likewise requires its own equivalence
+and recovery map. The proposition does not identify an approximate or
+contract-tested implementation with the exact map.
+
+\subsection{Closure rules}
+
+\begin{lemma}[Relaxation]
+\label{lem:relaxation}
+Let $T$ be $\theta$-averaged in $\|\cdot\|_H$ and let $\rho>0$ satisfy
+$\rho\theta<1$. Then $(1-\rho)I+\rho T$ is $\rho\theta$-averaged in
+$\|\cdot\|_H$ with $\operatorname{Fix}\bigl((1-\rho)I+\rho
+T\bigr)=\operatorname{Fix}T$.
+\end{lemma}
+
+\begin{proof}
+Writing $T=(1-\theta)I+\theta S$ with $S$ nonexpansive gives
+$(1-\rho)I+\rho T=(1-\rho\theta)I+\rho\theta S$, which is
+$\rho\theta$-averaged because $\rho\theta\in(0,1)$, and $\rho>0$ makes the
+fixed-point equations equivalent. The decoder and metric are untouched, so
+the certificate transports as stated in Theorem~\ref{thm:soundness}(ii).
+\end{proof}
+
+The next lemma is a conditional mathematical rule for blends, not an
+admission rule of the certified grammar. Its common-fixed-point hypothesis
+must be established independently; the current syntactic gate conditions
+alone do not establish it.
+
+\begin{lemma}[Blends]
+\label{lem:blend}
+Let $T_1,T_2$ be $\theta_1$- and $\theta_2$-averaged in a common
+$\|\cdot\|_H$ with
+$\operatorname{Fix}T_1\cap\operatorname{Fix}T_2\neq\emptyset$, and let
+$\lambda\in(0,1)$. Then $T=\lambda T_1+(1-\lambda)T_2$ is
+$\bigl(\lambda\theta_1+(1-\lambda)\theta_2\bigr)$-averaged in $\|\cdot\|_H$
+and $\operatorname{Fix}T=\operatorname{Fix}T_1\cap\operatorname{Fix}T_2$.
+\end{lemma}
+
+\begin{proof}
+Write $T_i=(1-\theta_i)I+\theta_iS_i$ and set
+$\theta=\lambda\theta_1+(1-\lambda)\theta_2$. Then
+$T=(1-\theta)I+\theta\bigl(\tfrac{\lambda\theta_1}{\theta}S_1
++\tfrac{(1-\lambda)\theta_2}{\theta}S_2\bigr)$, and the bracket is a convex
+combination of nonexpansive maps, hence nonexpansive; this is the
+combination rule of \citet{CombettesYamada2015Compositions}. The inclusion
+$\operatorname{Fix}T\supseteq\operatorname{Fix}T_1\cap\operatorname{Fix}T_2$
+is immediate. Conversely, let $z\in\operatorname{Fix}T$ and
+$w\in\operatorname{Fix}T_1\cap\operatorname{Fix}T_2$. Then
+$\|z-w\|\leq\lambda\|T_1z-w\|+(1-\lambda)\|T_2z-w\|\leq\|z-w\|$, so both
+inequalities are equalities and $\|T_iz-w\|=\|z-w\|$ for $i=1,2$; the
+Fej\'er inequality \eqref{eq:fejer} applied to $T_i$ at $z$ then forces
+$\|T_iz-z\|=0$. Hence $z\in\operatorname{Fix}T_1\cap\operatorname{Fix}T_2$.
+\end{proof}
+
+\subsection{The Halpern wrapper}
+
+\begin{proposition}[Halpern genomes]
+\label{prop:halpern}
+Let $T_G$ carry a certificate $(H_G,\theta_G,\pi_G)$ and set
+$S_G=I+\theta_G^{-1}(T_G-I)$. Then $S_G$ is nonexpansive in
+$\|\cdot\|_{H_G}$ with $\operatorname{Fix}S_G=\operatorname{Fix}T_G$, and the
+compiled iteration
+\begin{equation}
+ z_{k+1}=\lambda_{k+1}z_{\rm anc}+(1-\lambda_{k+1})S_Gz_k ,
+ \label{eq:halpern}
+\end{equation}
+under any admitted schedule, i.e.\ $\lambda_k\to0$,
+$\sum_k\lambda_k=\infty$, and $\sum_k|\lambda_{k+1}-\lambda_k|<\infty$,
+converges to $P^{H_G}_{\operatorname{Fix}T_G}(z_{\rm anc})$, the projection
+of the anchor onto $\operatorname{Fix}T_G$ in $\|\cdot\|_{H_G}$
+\citep{Halpern1967Fixed,Wittmann1992Approximation}. The canonical schedule
+$\lambda_{k+1}=1/(k+2)$ meets all three conditions and, when the wrapper
+anchors at the initial iterate ($z_{\rm anc}=z_0$), in addition gives
+\begin{equation}
+ \|S_Gz_k-z_k\|_{H_G}^2
+ \;\leq\;
+ \frac{4\operatorname{dist}_{H_G}^2\!\left(z_0,\operatorname{Fix}
+ T_G\right)}{(k+1)^2}
+ \label{eq:halpern-rate}
+\end{equation}
+\citep{Lieder2021Optimized,Kim2021Accelerated}.
+\end{proposition}
+
+\begin{proof}
+$S_G$ is precisely the nonexpansive map in the averaged decomposition
+$T_G=(1-\theta_G)I+\theta_GS_G$ of (C1), and $T_Gz=z$ if and only if
+$S_Gz=z$ because $\theta_G>0$. Since $(\mathcal Z_G,\langle\cdot,H_G
+\cdot\rangle)$ is a Hilbert space, the cited Halpern results apply verbatim
+in $\|\cdot\|_{H_G}$: convergence to the projection of the anchor is
+\citet{Wittmann1992Approximation}, and the rate \eqref{eq:halpern-rate} is
+\citet{Lieder2021Optimized}.
+\end{proof}
+
+Rate \eqref{eq:halpern-rate} is an $O(1/k^2)$ bound on the same squared
+residual that \eqref{eq:km-rate} bounds at $O(1/k)$, and it is exactly
+optimal in the following sense: \citet{ParkRyu2022Exact} exhibit a matching
+lower bound for deterministic fixed-point methods that access $S_G$ only
+through evaluations, with iterates constrained to the span of the anchor and
+past evaluations. The claim is optimality within that oracle class, not an
+unrestricted impossibility statement.
+
+\subsection{Safeguarded schedules}
+
+\begin{lemma}[Summable-error safeguard]
+\label{lem:safeguard}
+Let $T$ be $\theta$-averaged in $\|\cdot\|_H$ with
+$\operatorname{Fix}T\neq\emptyset$, and let $z_{k+1}=Tz_k+e_k$ with
+$\|e_k\|_H\leq\eta_k$ and $\sum_k\eta_k<\infty$. Then $(z_k)$ is
+quasi-Fej\'er monotone with respect to $\operatorname{Fix}T$ in
+$\|\cdot\|_H$ and converges to a point of $\operatorname{Fix}T$.
+\end{lemma}
+
+\begin{proof}
+For any $z^\star\in\operatorname{Fix}T$, nonexpansiveness gives the one-step
+inequality
+$\|z_{k+1}-z^\star\|_H\leq\|Tz_k-z^\star\|_H+\|e_k\|_H
+\leq\|z_k-z^\star\|_H+\eta_k$ with $\sum_k\eta_k<\infty$, which is
+quasi-Fej\'er monotonicity; in particular
+$\|z_k-z^\star\|_H\leq M:=\|z_0-z^\star\|_H+\sum_j\eta_j$ for every $k$.
+Combining the one-step inequality with the Fej\'er
+inequality~\eqref{eq:fejer} for the exact step gives
+\begin{equation*}
+ \|z_{k+1}-z^\star\|_H^2
+ \;\leq\;
+ \|z_k-z^\star\|_H^2-\frac{1-\theta}{\theta}\,\|Tz_k-z_k\|_H^2
+ +2M\eta_k+\eta_k^2 ,
+\end{equation*}
+and summing shows $\sum_k\|Tz_k-z_k\|_H^2<\infty$, hence
+$\|Tz_k-z_k\|_H\to0$. The iterates are bounded, so by continuity some
+cluster point $z^\star$ is fixed by $T$; quasi-Fej\'er monotonicity makes
+$\|z_k-z^\star\|_H+\sum_{j\geq k}\eta_j$ nonincreasing, so
+$\|z_k-z^\star\|_H$ converges, and it vanishes along a subsequence, hence
+$z_k\to z^\star$. This is the classical inexact
+Krasnosel'ski\u{\i}--Mann analysis
+\citep{Combettes2001QuasiFejerian,Combettes2004Solving}.
+\end{proof}
+
+The same mechanism underlies the inexact analysis of Douglas--Rachford and
+ADMM \citep{EcksteinBertsekas1992Douglas} and safeguarded Anderson
+acceleration \citep{Zhang2020Globally}, the design template for the
+$\mathrm{switch}$ gene. The guarantee is convergence, not a rate: the budget
+buys back the limit an aggressive step would otherwise forfeit.
+
+\FloatBarrier

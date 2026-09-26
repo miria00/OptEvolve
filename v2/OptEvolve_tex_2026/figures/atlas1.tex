@@ -1,0 +1,375 @@
+%% ====================================================================
+%%  atlas1.tex -- OptEvolve system overview (TikZ picture only).
+%%  Compiled by atlas1-standalone.tex; \input directly into the paper.
+%%
+%%  ------------------------------------------------------------------
+%%  LAYOUT SYSTEM  (read this before moving anything)
+%%  ------------------------------------------------------------------
+%%  The figure is four side-by-side PANELS reading left to right:
+%%
+%%    P1  Input / OptEvolveQuery      x  0.00 -- 3.10   centre 1.55
+%%    P2  Parser & Seeds          x  3.65 -- 6.75   centre 5.20
+%%    P3  SkyDiscover loop        x  8.05 -- 16.65  centre 12.35
+%%    P4  Output / SolverRecipe   x 17.20 -- 20.30  centre 18.75
+%%
+%%  Inter-panel gaps are 0.55 except P2->P3, which is 1.30: that is the
+%%  only inter-panel arrow carrying a text label ("initial population"),
+%%  and the label has to sit clear of both panel borders.
+%%
+%%  All four panels share ONE vertical grid, so titles, subtitles and
+%%  card rows line up straight across the whole figure:
+%%
+%%    \PanelTop  9.35   panel rectangle top
+%%    \TitleY    8.88   panel title row               (all four panels)
+%%    \SubY      8.28   panel subtitle row            (P2 has none)
+%%    \ContentT  7.91   top edge of the content block (reference edge)
+%%    \RowA      7.08   card row 1  (P1, P2 parse card, P3 top row, P4)
+%%    \RowB      5.18   card row 2  (P1, P4)
+%%    \RowC      3.28   card row 3  (P1, P4)
+%%    \RowD      1.38   card row 4  (P1, P4, and P2's footnote)
+%%    \BandY     2.68   horizontal FLOW BAND: the evaluator/selector
+%%                      centre line, and the height at which the low
+%%                      inter-panel arrows cross
+%%    \ContentB  0.55   bottom edge of the content block (reference edge)
+%%    \PanelBot  0.25   panel rectangle bottom
+%%
+%%  Rows A--D are 1.66 tall on a 1.90 pitch (0.24 clear between cards),
+%%  so P1 and P4 are the same stack and P3's top row lands on row A too.
+%%
+%%  SIZE CLASSES.  No card gets an ad-hoc width.  Each picks one of the
+%%  styles below (sidecard / loopcard / poolcard / chip), which fix text
+%%  width and minimum height, so every card in a column is identical by
+%%  construction.  Text widths carry >= 0.07cm of slack over the widest
+%%  line they must hold, measured at the final font size.
+%%
+%%  LINE BREAKS.  Hyphenation is off and every break inside a card is
+%%  manual, so no box can silently grow to fit its text.
+%%
+%%  ARROW RULE.  An inter-panel arrow attaches to a specific card when a
+%%  specific card is the producer or consumer, and to the panel border
+%%  when the panel as a whole is.  Intra-panel arrows always run
+%%  node-anchor to node-anchor, so they cannot overlap what they connect.
+%%
+%%  FONTS.  Everything is \sffamily at an absolute \fontsize, so the
+%%  figure is independent of the surrounding document's base size.  Note
+%%  that submission.tex loads "times", which remaps \sffamily from CM
+%%  Sans to Helvetica; Helvetica runs within about 1.7% of these metrics,
+%%  every text width above still has slack, so the layout survives being
+%%  \input into the paper.  Re-check the widest lines if the type scale
+%%  or the text changes.
+%%
+%%  WHITESPACE.  Every line outside the tikzpicture ends in "%".  A bare
+%%  line end there is a space token in the enclosing horizontal box and
+%%  pads the figure's bounding box (it was worth 3.2cm before this).
+%% ====================================================================
+\begingroup%
+%% --------------------------------------------------------------------
+%% TYPE SCALE.  One command per text level; nothing in the picture picks
+%% a font locally.  Leadings are tight (~1.15x) so the multi-line detail
+%% text inside a card stays compact.
+%% --------------------------------------------------------------------
+\newcommand{\OptEvolveTitleFont}{\fontsize{10.5}{12.0}\bfseries\selectfont}%    panel title
+\newcommand{\OptEvolveSubFont}{\fontsize{8.4}{9.6}\bfseries\selectfont}%       panel subtitle
+\newcommand{\OptEvolveGroupFont}{\fontsize{7.8}{9.0}\bfseries\selectfont}%     in-panel group label
+\newcommand{\OptEvolveHeadFont}{\fontsize{8.0}{9.2}\bfseries\selectfont}%      card heading
+\newcommand{\OptEvolveCopyFont}{\fontsize{6.8}{7.8}\mdseries\selectfont}%      card detail
+\newcommand{\OptEvolveStageHeadFont}{\fontsize{6.6}{7.6}\bfseries\selectfont}% funnel stage heading
+\newcommand{\OptEvolveStageCopyFont}{\fontsize{6.0}{7.0}\mdseries\selectfont}% funnel stage detail
+\newcommand{\OptEvolveNoteFont}{\fontsize{6.2}{7.2}\mdseries\selectfont}%      free-standing note
+\newcommand{\OptEvolveChipFont}{\fontsize{7.0}{8.0}\mdseries\selectfont}%      processor-chip label
+%
+%% Card body = bold heading paragraph + detail paragraph.  The two parts
+%% MUST be separate paragraphs, each with its \par inside the font group.
+%% TeX fixes a paragraph's interline glue from \baselineskip as it stands
+%% at \par, so a heading and its detail cannot share one paragraph: the
+%% detail would inherit the document's 12pt leading.  (That was the cause
+%% of the loose vertical spacing inside the old cards.)
+\newcommand{\OptEvolveBody}[2]{%
+  \parindent=0pt\relax%
+  {\OptEvolveHeadFont\strut#1\par}%
+  \vspace{0.45mm}%
+  {\OptEvolveCopyFont\strut#2\strut\par}}%
+%% Heading-only card (no detail line).
+\newcommand{\OptEvolveBodyOnly}[1]{%
+  \parindent=0pt\relax%
+  {\OptEvolveHeadFont\strut#1\strut\par}}%
+%% Same two-paragraph construction at funnel-stage sizes.
+\newcommand{\OptEvolveStageBody}[2]{%
+  \parindent=0pt\relax%
+  {\OptEvolveStageHeadFont\strut#1\par}%
+  \vspace{0.30mm}%
+  {\OptEvolveStageCopyFont\strut#2\strut\par}}%
+%
+%% --------------------------------------------------------------------
+%% GRID CONSTANTS.  Every coordinate in the picture is written in terms
+%% of these, so a row or a column can be moved from one place.
+%% --------------------------------------------------------------------
+\def\PanelTop{9.35}%   panel rectangle, top edge (all four panels)
+\def\PanelBot{0.25}%   panel rectangle, bottom edge (all four panels)
+\def\TitleY{8.88}%     panel title row
+\def\SubY{8.28}%       panel subtitle row
+\def\ContentT{7.91}%   reference only: content top = top edge of row A
+\def\ContentB{0.55}%   reference only: content bottom = row D / evaluator foot
+\def\RowA{7.08}%       card row 1 centre
+\def\RowB{5.18}%       card row 2 centre
+\def\RowC{3.28}%       card row 3 centre
+\def\RowD{1.38}%       card row 4 centre
+\def\BandY{2.68}%      flow band / evaluator + selector centre line
+\def\PoneL{0.00}%      P1 left edge
+\def\PoneR{3.10}%      P1 right edge
+\def\ColIn{1.55}%      P1 card column centre
+\def\PtwoL{3.65}%      P2 left edge
+\def\PtwoR{6.75}%      P2 right edge
+\def\ColSeed{5.20}%    P2 card / chip column centre
+\def\PthrL{8.05}%      P3 left edge
+\def\PthrR{16.65}%     P3 right edge
+\def\ColLoop{12.35}%   P3 centre, for the panel title only
+\def\ColLoopA{10.20}%  P3 left  column: Context Builder / Solution Selector
+\def\ColLoopB{14.50}%  P3 right column: Solution Generator / Evaluator
+\def\PfourL{17.20}%    P4 left edge
+\def\PfourR{20.30}%    P4 right edge
+\def\ColOut{18.75}%    P4 card column centre
+%
+\begin{tikzpicture}[
+  x=1cm, y=1cm, font=\sffamily, line cap=round, line join=round,
+  %% Hyphenation off everywhere; see LINE BREAKS above.
+  every node/.append style={execute at begin node={\hyphenpenalty=10000\relax}},
+  %% ---- containers ---------------------------------------------------
+  panel/.style={draw=black!72, line width=0.9pt, rounded corners=3.2mm},
+  card/.style={draw=black!68, line width=0.75pt, rounded corners=1.8mm,
+               align=center, inner sep=1.5mm},
+  %% ---- card size classes (node width = text width + 2 x inner sep) ---
+  %% sidecard 2.70 wide: holds "Compute Budget" (2.29) on one line.
+  sidecard/.style={card, text width=2.40cm, minimum height=1.66cm},
+  %% loopcard 3.70 wide: holds "bandit compute allocation" (2.86).
+  loopcard/.style={card, text width=3.40cm, minimum height=1.66cm},
+  %% poolcard: the selector.  Same width as a loopcard but taller, so the
+  %% left column does not read as empty beside the tall evaluator.
+  poolcard/.style={loopcard, minimum height=2.50cm},
+  %% chip 1.55 wide: holds "Condat--V\~u" (1.28) on one line.
+  chip/.style={card, rounded corners=0.6mm, inner sep=0.65mm,
+               text width=1.42cm, minimum height=0.50cm,
+               fill=atlasChip, text=white, font=\sffamily\OptEvolveChipFont},
+  stagebox/.style={draw=black!70, line width=0.75pt},
+  %% stage text: the caption sitting inside one funnel trapezoid.  Text
+  %% width is set per stage, since each trapezoid is a different width.
+  stage text/.style={align=center},
+  %% ---- text-only nodes (font set on the node, so leading is correct) -
+  panel title/.style={align=center, font=\sffamily\OptEvolveTitleFont},
+  panel subtitle/.style={align=center, font=\sffamily\OptEvolveSubFont},
+  group label/.style={align=center, font=\sffamily\OptEvolveGroupFont},
+  note/.style={align=center, font=\sffamily\OptEvolveNoteFont},
+  %% ---- connectors ----------------------------------------------------
+  flow/.style={-{Latex[length=2.4mm,width=1.7mm]}, draw=black!66,
+               line width=0.9pt},
+  feedback/.style={-{Latex[length=2.4mm,width=1.7mm]}, draw=red!68!black,
+                   line width=1.0pt}
+]
+
+%% --------------------------------------------------------------------
+%% PALETTE.  Flat, print-safe tints.  Panels take the palest fills so the
+%% cards inside stay legible; one hue per semantic role.
+%% --------------------------------------------------------------------
+\definecolor{atlasLavender}{HTML}{E7E0F1}% P1 panel  (input)
+\definecolor{atlasSeedBg}{HTML}{DCE6F7}%   P2 panel  (parser + seeds)
+\definecolor{atlasLoopBg}{HTML}{EAF0FA}%   P3 panel  (orchestration loop)
+\definecolor{atlasOutBg}{HTML}{E3EFD7}%    P4 panel  (output)
+\definecolor{atlasBlue}{HTML}{CFE0F5}%     card: problem statement
+\definecolor{atlasTan}{HTML}{E9D9B7}%      card: data / parsing
+\definecolor{atlasPurple}{HTML}{D8C8E8}%   card: hardware
+\definecolor{atlasMint}{HTML}{C7F0DF}%     card: budget
+\definecolor{atlasChip}{HTML}{668B90}%     seed-genome processor chips
+\definecolor{atlasYellow}{HTML}{F4DFA5}%   card: LLM-driven stages
+\definecolor{atlasGreen}{HTML}{CBE6BA}%    card: selection
+\definecolor{atlasGray}{HTML}{E5E9EA}%     evaluator housing
+\definecolor{atlasAmber}{HTML}{F0B923}%    funnel stage 0 (the hard gate)
+
+%% ====================================================================
+%% P1  INPUT PANEL -- "OptEvolveQuery": the four fields of a query.
+%%     One group: a column of four identical sidecards on rows A--D.
+%% ====================================================================
+\path[panel, fill=atlasLavender] (\PoneL,\PanelBot) rectangle (\PoneR,\PanelTop);
+\node[panel title]    at (\ColIn,\TitleY) {Input};
+\node[panel subtitle] at (\ColIn,\SubY)   {OptEvolveQuery};
+
+% P1 row A -- the objective to be solved, in any accepted surface form.
+\node[sidecard, fill=atlasBlue] (problem) at (\ColIn,\RowA)
+  {\OptEvolveBody{Problem}{natural language /\\CVXPY /\\conic data}};
+% P1 row B -- what the synthesised solver will be tuned against.
+\node[sidecard, fill=atlasTan] (instances) at (\ColIn,\RowB)
+  {\OptEvolveBody{Instance Distribution}{real datasets}};
+% P1 row C -- deployment target (heading only, no detail line).
+\node[sidecard, fill=atlasPurple] (hardware) at (\ColIn,\RowC)
+  {\OptEvolveBodyOnly{Hardware Target}};
+% P1 row D -- search budget (heading only, no detail line).
+\node[sidecard, fill=atlasMint] (budget) at (\ColIn,\RowD)
+  {\OptEvolveBodyOnly{Compute Budget}};
+
+%% ====================================================================
+%% P2  PARSER & SEEDS PANEL.
+%%     Two stacked groups: (a) the parse card on row A, (b) the "Seed
+%%     Genomes" group -- label, four chips, one explanatory note.
+%%     This panel has no subtitle, so the \SubY row is left empty on
+%%     purpose rather than the title being dropped down to fill it.
+%% ====================================================================
+\path[panel, fill=atlasSeedBg] (\PtwoL,\PanelBot) rectangle (\PtwoR,\PanelTop);
+\node[panel title] at (\ColSeed,\TitleY) {Parser \& Seeds};
+
+% P2 row A -- lowers any accepted input form to the composite problem IR.
+% On row A so it lines up with the Problem card that feeds it.
+\node[sidecard, fill=atlasTan!55] (parser) at (\ColSeed,\RowA)
+  {\OptEvolveBody{Parse $\rightarrow$\\Problem IR}{composite form\\$f+g+h(Lx)$}};
+
+% P2 group label -- heads the chip stack below it; y = 5.88 sits
+% midway between the parse card's foot (6.25) and the first chip (5.45).
+\node[group label] at (\ColSeed,5.88) {Seed Genomes};
+
+% P2 seed-genome chips -- four identical stylised processors on a 0.90
+% pitch (5.20, 4.30, 3.40, 2.50).  The chip style fixes the body and the
+% two \foreach loops add the pin rows, so all four are identical by
+% construction; pin offsets are derived from the 1.55 x 0.50 body.
+\foreach \id/\chiplabel/\cy in {%
+  pdhg/PDHG/5.20, drs/DRS/4.30, fbs/FBS/3.40, cv/Condat--V\~u/2.50}{
+  \node[chip] (\id) at (\ColSeed,\cy) {\chiplabel};
+  \foreach \dx in {-0.56,-0.28,0,0.28,0.56}{% top and bottom pins
+    \draw[black!55, line width=0.65pt] ([xshift=\dx cm]\id.north) -- +(0,0.10);
+    \draw[black!55, line width=0.65pt] ([xshift=\dx cm]\id.south) -- +(0,-0.10);
+  }
+  \foreach \dy in {-0.13,0,0.13}{% side pins
+    \draw[black!55, line width=0.65pt] ([yshift=\dy cm]\id.east) -- +(0.10,0);
+    \draw[black!55, line width=0.65pt] ([yshift=\dy cm]\id.west) -- +(-0.10,0);
+  }
+}
+
+% P2 note -- caption for the chip group.  Placed on row D so it aligns
+% with the bottom card of P1 and P4.  Breaks are manual: the widest line
+% is "textbook solvers as typed" at 2.39 against a 2.70 text width.
+\node[note, text width=2.70cm] at (\ColSeed,\RowD)
+  {textbook solvers as typed\\genomes; one island per\\base scheme};
+
+%% ====================================================================
+%% P3  SKYDISCOVER PANEL -- the orchestration loop.
+%%     Internally a 2x2 arrangement:
+%%       top-left  Context Builder      top-right  Solution Generator
+%%       bot-left  Solution Selector    bot-right  Evaluator (housing)
+%%     The cycle runs clockwise: context -> generator -> evaluator ->
+%%     selector -> context, plus one red rejection arrow returning from
+%%     the evaluator to the generator.
+%% ====================================================================
+\path[panel, fill=atlasLoopBg] (\PthrL,\PanelBot) rectangle (\PthrR,\PanelTop);
+\node[panel title]    at (\ColLoop,\TitleY) {SkyDiscover};
+\node[panel subtitle] at (\ColLoop,\SubY)   {Orchestration Loop};
+
+% P3 top-left, row A -- assembles the prompt for the generator.
+\node[loopcard, fill=atlasYellow] (context) at (\ColLoopA,\RowA)
+  {\OptEvolveBody{Context Builder}{mutation menu +\\past results}};
+% P3 top-right, row A -- the LLM proposal step.
+\node[loopcard, fill=atlasYellow] (generator) at (\ColLoopB,\RowA)
+  {\OptEvolveBody{Solution Generator}{LLM proposes genome\\edits as JSON patches}};
+% P3 bottom-left -- the population manager.  Centred on \BandY like the
+% evaluator, so the evaluator -> selector arrow is exactly horizontal.
+\node[poolcard, fill=atlasGreen] (selector) at (\ColLoopA,\BandY)
+  {\OptEvolveBody{Solution Selector}{dedup + islands +\\bandit compute allocation}};
+
+%% --------------------------------------------------------------------
+%% P3 bottom-right -- EVALUATOR: a housing card holding a group label and
+%% a three-stage funnel.  The housing runs \ContentB (0.55) up to 4.81,
+%% i.e. it is centred on \BandY like the selector.
+%%
+%% Funnel geometry.  Four horizontal edges, and the half-width at each:
+%%     y = 4.26  half 1.710  (funnel mouth, 0.14 clear of the housing)
+%%     y = 2.56  half 1.514
+%%     y = 1.51  half 1.393
+%%     y = 0.71  half 1.301  (funnel throat, 0.16 clear of the housing)
+%% Half-width falls at a constant 0.1155 per unit height, so the two
+%% sides are straight lines through all three stages.  Stage heights
+%% (1.70 / 1.05 / 0.80) follow their line counts (5 / 3 / 2); stage 0 is
+%% given the surplus so that the 0/1 seam clears \BandY, where the
+%% outgoing arrow leaves, rather than meeting it.  Each stage's text
+%% width sits below the narrower of its two edges, so no label can
+%% spill outside its trapezoid.
+%% --------------------------------------------------------------------
+\node[card, fill=atlasGray, minimum width=3.70cm, minimum height=4.26cm]
+  (evaluator) at (\ColLoopB,\BandY) {};
+\node[group label] at (\ColLoopB,4.53) {Evaluator};% 0.28 below the housing top
+
+% Funnel edge coordinates, top to bottom.  Named so the three trapezoids
+% share them and cannot drift apart.
+\coordinate (f0l) at (12.790,4.26); \coordinate (f0r) at (16.210,4.26);
+\coordinate (f1l) at (12.986,2.56); \coordinate (f1r) at (16.014,2.56);
+\coordinate (f2l) at (13.107,1.51); \coordinate (f2r) at (15.893,1.51);
+\coordinate (f3l) at (13.199,0.71); \coordinate (f3r) at (15.801,0.71);
+
+% Stage 0 -- the hard typing gate; amber because it is the only stage
+% that rejects outright.  Widest stage, so it carries the most text.
+\path[stagebox, fill=atlasAmber] (f0l) -- (f0r) -- (f1r) -- (f1l) -- cycle;
+\node[stage text, text width=2.77cm] at (\ColLoopB,3.41)
+  {\OptEvolveStageBody{Stage 0:\\Type-Check Gate}%
+                  {convergence certificate\\required; invalid\\genomes rejected}};
+% Stages 1--2 -- empirical measurement on real instances.
+\path[stagebox, fill=black!7] (f1l) -- (f1r) -- (f2r) -- (f2l) -- cycle;
+\node[stage text, text width=2.56cm] at (\ColLoopB,2.035)
+  {\OptEvolveStageBody{Stages 1--2}%
+                  {solve real instances;\\measure time-to-tolerance}};
+% Stage 3 -- the final generalisation check; narrowest stage.
+\path[stagebox, fill=black!3] (f2l) -- (f2r) -- (f3r) -- (f3l) -- cycle;
+\node[stage text, text width=2.36cm] at (\ColLoopB,1.11)
+  {\OptEvolveStageBody{Stage 3}{held-out + stress}};
+
+%% --------------------------------------------------------------------
+%% P3 connectors.  All five are axis-aligned and anchored to node
+%% borders.  The two vertical arrows share the 1.44-tall corridor between
+%% row A and the evaluator; they sit at +-1.25 from the column centre.
+%% The caption is right-aligned against the red arrow, not centred between
+%% the two, so it cannot be read as labelling the black one.
+%% --------------------------------------------------------------------
+\draw[flow] (context.east) -- (generator.west);                     % top edge, ->
+\draw[flow] ([xshift=-1.25cm]generator.south)
+         -- ([xshift=-1.25cm]evaluator.north);                      % right edge, down
+\draw[flow] (evaluator.west) -- (selector.east);                    % bottom edge, <-
+\draw[flow] (selector.north) -- (selector.north |- context.south);  % left edge, up
+\draw[feedback] ([xshift=1.25cm]evaluator.north)
+             -- ([xshift=1.25cm]generator.south);                   % rejection return, up
+\node[note, text=red!68!black, anchor=east] at (15.62,5.53)% 0.13 left of the red
+  {rejection feedback};%                            arrow, corridor mid-height
+
+%% ====================================================================
+%% P4  OUTPUT PANEL -- "SolverRecipe": four artefacts on the same stack
+%%     geometry as P1, so rows A--D line up straight across the figure.
+%%     Cards are plain white so they read as emitted artefacts rather
+%%     than as the typed input slots of P1.
+%% ====================================================================
+\path[panel, fill=atlasOutBg] (\PfourL,\PanelBot) rectangle (\PfourR,\PanelTop);
+\node[panel title]    at (\ColOut,\TitleY) {Output};
+\node[panel subtitle] at (\ColOut,\SubY)   {SolverRecipe};
+
+% P4 row A -- the winning genome and how it was reached.
+\node[sidecard, fill=white] (best) at (\ColOut,\RowA)
+  {\OptEvolveBody{Best Genome}{derivation +\\proof tree}};
+% P4 row B -- the guarantees attached to it.
+\node[sidecard, fill=white] (certificates) at (\ColOut,\RowB)
+  {\OptEvolveBody{Convergence Certificates}{typing + rates +\\runtime residuals}};
+% P4 row C -- the executable artefact.
+\node[sidecard, fill=white] (compiled) at (\ColOut,\RowC)
+  {\OptEvolveBody{Compiled JAX}{solver code}};
+% P4 row D -- the reported evidence.
+\node[sidecard, fill=white] (benchmark) at (\ColOut,\RowD)
+  {\OptEvolveBody{Benchmark Card}{held-out results}};
+
+%% ====================================================================
+%% INTER-PANEL FLOW.  Source is the panel border where the whole panel
+%% is the producer, and a card border where one card is.
+%% ====================================================================
+% P1 -> P2: the complete OptEvolveQuery enters the parser.  Runs along row A.
+\draw[flow] (\PoneR,\RowA) -- (parser.west);
+% P2 -> P3: the seed genome library becomes the loop's initial
+% population.  Runs along the flow band; the label sits in the widened
+% inter-panel gap, clear of both panel borders.
+\draw[flow] (\PtwoR,\BandY) -- (selector.west);
+\node[note, text width=1.10cm] at (7.40,3.04)% gap centre, 0.11 above the arrow
+  {initial\\population};
+% P3 -> P4: genomes that clear stage 3 are emitted as the SolverRecipe.
+\draw[flow] (evaluator.east) -- (\PfourL,\BandY);
+
+\end{tikzpicture}%
+\endgroup%

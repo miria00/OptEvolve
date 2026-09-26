@@ -1,0 +1,392 @@
+% Section 3. Method: recipes, the gate, and the execution layer.
+% Every number carries a "% source:" comment naming a file under
+% /home/miria/OptEvolve/v2/results/. Nothing here comes from atlas/.
+% Style contract: no em-dash characters, no italics, plain declarative prose.
+
+\section{Method: recipes, the gate, and the execution layer}
+\label{sec:methods}
+% sec:methods, sec:gate, sec:mixing and eq:composite are referenced by
+% 4-theory.tex, which is carried over unchanged; the labels are placed here
+% so those cross-references resolve to the corresponding new material.
+
+A recipe is the complete executable object our search evaluates: a splitting
+scheme, its step sizes, its wrappers, a precision policy, a certificate cadence,
+a kernel, and an execution structure. Every block is typed, is validated before
+any arithmetic runs, and is serialised with each measurement, so a reported time
+is attributable to a specific object rather than to a solver name.
+
+The compiler accepts supported instances of the composite form
+\begin{equation}
+  \min_{x}\; f(x) + g(x) + h(Lx),
+  \label{eq:composite}
+\end{equation}
+with convex $L_f$-smooth $f$, proximable $g$ and $h$, and a linear map $L$ with a
+computable adjoint and a supplied upper bound $\ell \geq \|L\|$. For anisotropic
+total-variation denoising $f(x) = \tfrac12\|x-y\|^2$, $g = 0$, $h$ is the scaled
+$\ell_1$ norm and $L$ is the discrete gradient. For the three linear-programming
+families $f$ is the linear cost, $g$ is the indicator of the nonnegative orthant,
+$h$ is the indicator of an affine equality set and $L$ is the constraint operator.
+
+\subsection{The recipe}
+
+% source: results/method_axis_20260909/factorial.json, first row of tolerances["0.0001"]
+One record reads, verbatim from the results file,
+\verb!{scheme: condat_vu, params: {tau: 0.25, sigma: 0.25, alpha: null, rho: 1.5},!
+\verb!wrapper: {halpern: false, restart: none, restart_k: null}, mix: null,!
+\verb!backend: {precision: schedule, K: 256, theta: 0.01, batch: false}, metric: null}!.
+Every row carries the same block structure. Table~\ref{tab:recipe} gives the
+blocks and the values the corpus exercises.
+
+% source: results/attack_plan_20260906/source_v1/atlas/backend/CONTRACT.md, section 1 table.
+% CAVEAT: that contract file is a 2026-09-06 snapshot. It predates the
+% execution-structure gene and still describes precision as the gene that
+% selects the execution policy. The prose below says so explicitly.
+\begin{table}[t]
+\centering
+\caption{Recipe blocks and the values exercised in the recorded corpus.
+Validation rejects with the violated condition and never clamps.}
+\label{tab:recipe}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Block & Meaning & Recorded values \\
+\midrule
+scheme    & splitting identity        & \texttt{pdhg}, \texttt{condat\_vu} \\
+params    & step sizes, relaxation    & \texttt{tau}, \texttt{sigma}, \texttt{alpha}, \texttt{rho} \\
+wrapper   & anchoring and restart     & \texttt{halpern}, \texttt{restart}, \texttt{restart\_k} \\
+precision & iterate arithmetic policy & \texttt{f64}, \texttt{f32\_cert64}, \texttt{schedule} \\
+K         & certificate cadence       & integer, $1 \le K \le 10000$ \\
+theta     & schedule switch threshold & float, $0 < \theta < 1$, schedule only \\
+batch     & reserved population backend & bool, validates and is a no-op \\
+kernel    & atom implementation       & \texttt{jax}, \texttt{tv\_fused128}, \texttt{tv\_fused256}, \texttt{tv\_recip256} \\
+execution & compiled loop structure   & \texttt{device\_loop}, \texttt{host\_precision\_phases} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The precision enum admits three values and rejects any spelling of
+\texttt{bf16} or \texttt{f16} by name. The cadence gene $K$ is the interval at
+which the float64 duality gap is evaluated, and the recorded evaluation points
+are exactly the multiples of $K$: a solve at $K=256$ that stops after 4864
+iterations records \texttt{gap\_iters} $= [256, 512, \ldots, 4864]$ and 19
+checks.
+% source: results/method_axis_20260909/factorial.json (gap_iters, certificate_checks);
+% cadences 64,128,256,512 also in results/kernel_fusion_20260909/cadence/cad_4090_K*.json
+The \texttt{schedule} policy is a two-phase wrapper, float32 iterates then
+float64, with the switch governed by $\theta$ and its iteration recorded:
+\texttt{iterate\_dtypes} $=[\text{float32},\text{float64}]$,
+\texttt{switch\_iter} $=256$, $\theta = 0.01$.
+
+% source: results/tv_ffi_20260906/DECOMPOSITION_REPORT.md, section 1
+Execution structure is one XLA-visible difference. The device loop is
+\texttt{jax.lax.fori\_loop(k, end, ...)} with a traced bound inside a
+\texttt{while\_loop}, which XLA cannot unroll. The chunked structure is
+\texttt{jax.lax.fori\_loop(0, K, ...)} with a static Python $K$, which XLA
+unrolls and fuses across iterations. In the shipped catalog the choice is not
+separately addressable, because it is dispatched from the precision gene:
+\texttt{f64} and \texttt{f32\_cert64} always ran the device loop and
+\texttt{schedule} always ran host precision phases.
+% source: enumerated over all 15 factorial.json files in results/tv_ffi_20260906
+% and results/method_axis_20260909, train and validation rows together: 2208
+% (f64, device_loop), 144 (f32_cert64, device_loop), 1680 (schedule,
+% host_precision_phases). Train rows alone are 1104, 72 and 840. No
+% cross-pairing exists.
+Enumerating the pairs over all fifteen factorial artifacts confirms that no
+recorded cell separates them. We therefore promote execution structure to a
+gene of its own and report it explicitly.
+
+\subsection{The construction gate}
+\label{sec:gate}
+
+The gate is an exact-arithmetic side condition on the step sizes, checked
+symbolically before execution. A rejected configuration carries the violated
+condition and no timing at all.
+% source: results/netflow_20260909/grid_4090.json, alg=pdhg_balanced and condat_vu_balanced rows
+PDHG rejects with
+\verb!side condition violated: t>0, s>0, t*s*||L||^2 < 1  (t*s*||L||^2=1.02267)!
+and Condat-Vu with
+\verb!side condition violated: t*L_f/2 + t*s*||L||^2 < 1  (lhs=1.02267)!.
+On a linear cost the Lipschitz term vanishes and the two left-hand sides
+coincide at every size, taking 1.02267, 1.03040, 1.03577 and 1.03781 at grid
+sizes 12, 16, 24 and 32.
+
+% source: results/structure_20260909/structure_summary_4090.json, 13 cells.
+% norm_bound_gate/sigma_max recomputed per cell: minimum 1.0191856 at
+% regular_s1024_d3, maximum 1.0200000 at grid_s12. ts_max_admissible times
+% norm_bound_gate squared evaluates to 1.0 in float64 in all thirteen cells.
+The gate consumes a norm bound, not the norm. The ratio of
+\texttt{norm\_bound\_gate} to $\sigma_{\max}$ is 1.0200000, 1.0199999,
+1.0199124 and 1.0199594 at grid sizes 12, 16, 24 and 32, and over all thirteen
+cells it runs from 1.0191856 to 1.0200000. The admissible step product equals
+the reciprocal of the squared bound exactly in double precision in every
+cell. The admissible region is a measured function of family and degree
+and is close to size-invariant within a family (Table~\ref{tab:gate}).
+
+\begin{table}[t]
+\centering
+\caption{The admissible step product is set by problem structure. Per cell,
+three instances each.}
+\label{tab:gate}
+% source: results/structure_20260909/structure_summary_4090.json, cells array
+\begin{tabular}{@{}llll@{}}
+\toprule
+Family & Degree & $\sigma_{\max}$ range & Admissible $ts$ range \\
+\midrule
+grid    & 4 & 3.9658 to 3.9952 & 0.060223 to 0.061114 \\
+regular & 2 & 2.828421 to 2.828427 & 0.120197 to 0.120208 \\
+regular & 3 & 3.4116 to 3.4138 & 0.082559 to 0.082663 \\
+regular & 4 & 3.8604 to 3.8630 & 0.064435 to 0.064535 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% source: results/netflow_20260909/grid_4090.json (24 of 48 rows carry an "error" key)
+% and results/method_axis_20260909/factorial.json (N and penalised SGM-1 ratios)
+Family dependence is a difference in kind. The balanced preset
+$(\tau,\sigma,\rho) = (0.25, 0.25, 1.5)$ is inadmissible on netflow, rejected in
+24 of 48 configurations, while the same preset is legal on total-variation
+denoising and merely slow there, costing 4.3125 times the iteration count of the
+banked preset $(0.05, 1.0, 1.9)$.
+
+% source: results/finish_20260910/{omega_4090,omega_ot_4090,omega_bw}.json,
+% 972+729+972 = 2673 rows, every one requested at theta = 0.99. Recomputed
+% tau*sigma*Lnorm^2 equals 0.99 exactly in 882 rows and differs by at most
+% 3.331e-16 elsewhere; recomputed tau/sigma equals r exactly in 1575 rows and
+% differs by at most 2.4e-16 elsewhere.
+Reparameterising $(\tau, \sigma)$ as a saturation level $\theta = t s \|L\|^2$
+and a ratio $r = \tau/\sigma$ makes the gate a function of $\theta$ alone.
+Across all 2673 rows of the three sweeps, every one requested at
+$\theta = 0.99$, the recomputed product agrees with 0.99 to within
+$3.4\times10^{-16}$ and is exact in 882 rows, and the recomputed ratio agrees
+with $r$ to within $2.4\times10^{-16}$ and is exact in 1575 rows.
+% source: results/structure_20260909/structure_summary_4090.json,
+% gate_is_function_of_theta_only block
+% source: results/finish_20260910/omega_ot_4090.json, Lnorm constant within each cell
+On optimal transport the bound needs no power iteration: the recorded norm is
+8.160000, 11.539983 and 14.133535 at the $32\times32$, $64\times64$ and
+$96\times96$ cells, which are $1.02\sqrt{m+n}$ to full double precision, so that
+family's admissible region shrinks as the instance grows.
+
+\subsection{Three assurance levels}
+\label{sec:mixing}
+
+% source: results/attack_plan_20260906/source_v1/atlas/backend/CONTRACT.md, section 3
+The backend contract already states that construction assumptions,
+implementation tests and runtime numerical checks are separate obligations, and
+that changing dtype changes numerical errors so exact-arithmetic convergence
+guarantees do not transfer verbatim to mixed precision. We keep the three
+separate and never let one stand in for another.
+
+\textbf{Level 1, construction.} The side condition is checked in exact
+arithmetic before execution and recorded per run as
+\texttt{construction\_satisfied}; on netflow, 24 rows are gate verdicts with no
+measurement attached.
+% source: results/netflow_20260909/grid_4090.json and
+% results/method_axis_20260909/factorial.json
+
+\textbf{Level 2, implementation admission.} A compiled update must reproduce a
+float64 reference before use. Every kernel variant passes five per-atom checks
+against float64 numpy references at its declared tolerance before entering any
+phenotype, the generated LP CSR templates additionally pass an eight-trial
+registry check and then per-instance reference-map admission, and non-finite
+outputs fail admission. This level is empirical: numerical admission and
+reference-trajectory agreement are not formal floating-point proofs, and the
+reciprocal kernel variant deliberately changes rounding.
+% source: CONTRACT.md current update and section 3; the limitation sentence is
+% published verbatim in results/tv_ffi_20260906/analysis_v2/REPORT.md, Limits.
+
+\textbf{Level 3, runtime certification.} The duality gap is evaluated in
+float64 in original coordinates and termination is decided by that value alone.
+The certificate dtype is float64 in all 2016 recorded per-instance train runs
+across the fifteen factorial artifacts, and the profiled operator set names
+\texttt{original\_forward} and \texttt{original\_adjoint} beside
+\texttt{base\_step\_f64}, \texttt{base\_step\_f32} and \texttt{certificate\_f64}.
+Enforcement is mechanical: the certified gap raises on any non-float64
+certificate value, and the policy constructor refuses \texttt{bf16} and
+\texttt{f16} by name.
+% source: results/method_axis_20260909/profiles.json and factorial.json; CONTRACT.md section 3
+
+\subsection{Hardware-aware backend genes}
+\label{sec:hardware}
+% [RESTORED VERBATIM FOR REVIEW BY NIKHIL, 2026-09-10]
+% Source: github.com/miria00/OptAtlas_2026, main at commit 218ac81
+% (2026-08-31), 3-methods.tex lines 142-172. Only LaTeX comment lines were
+% added here; the rendered text of this subsection is identical to that commit.
+% A different, never-pushed version titled "Hardware-aware execution" exists in
+% v2/OptEvolve_tex_2026/3-methods.tex lines 85-109 and is NOT used here.
+%
+% PRECISION-FRAMING FLAGS [P1] [P2] [P3] mark sentences for review; the text
+% itself is unedited. Common cause: in the shipped catalog the precision gene
+% and the execution-structure gene are the same gene.
+% atlas/schemes/base_schemes.py:813 sends f64 and f32_cert64 to the
+% traced-bound device loop and only schedule to chunked host phases, so no
+% catalog cell varies precision while holding loop structure fixed. Separated
+% by hand (TV n=256, RTX 4090, tol 1e-4, K=256, cost per iteration): float32
+% over float64 is 1.00x inside the device loop and 1.58x inside chunked phases.
+% source: results/artifacts_20260910/fanova.json (per_iteration_us) and
+% results/tv_ffi_20260906/DECOMPOSITION_REPORT.md sections 1 and 2.
+
+% [P1] Names floating-point precision as a backend gene alongside batching,
+%      sparse format and kernel fusion. In the shipped catalog precision is not
+%      independent of loop structure; see the header note above.
+A second family of genes controls not what iteration runs but
+how it is computed: floating-point precision, batching across
+instances, sparse-matrix format, and kernel-fusion strategy. The
+% [P2] Flags "backend genes cannot affect correctness ... fusion, precision, and
+%      block sizes change only its implementation." This holds for the
+%      exact-arithmetic certificate on the map T. Numerically, precision is not
+%      implementation-only: pure float32 iterates certify 0 of 6 (Condat-Vu) and
+%      1 of 6 (PDHG) at tol 1e-6 where float64 certifies 5 of 6 (TV n=256, RTX
+%      4090). Float32 also changes the iteration count at n=128 (float64 576.0,
+%      float32 586.7) and n=496 (float64 1066.7, float32 1077.3), K=64, RTX PRO
+%      6000 Blackwell.
+%      source: results/tv_ffi_20260906/f32row_4090/factorial.json and
+%      results/bw_20260909/sz128_bw, results/bw_20260909/sz496_bw.
+architectural invariant is that backend genes cannot affect correctness at
+the operator level: the construction certificate is a statement about the
+map $T$, and fusion, precision, and block sizes change only its
+implementation. Kernel correctness is instead established by per-atom unit
+tests that require agreement with a reference backend to tolerance, in the
+pattern of hardware-aware kernel generation for coding agents
+\citep{Hawkeye2026}. The system thus has two free-form-but-verified layers
+surrounding a certified core: heuristic schedules above the calculus,
+checked by the safeguard monitor, and kernels below it, checked by
+unit tests; the calculus between them is never mutated.
+
+The target hardware is visible to the search: the device identifier
+conditions the mutation context, so genomes can specialize to the
+accelerator they will run on. Kernel fusion matters most exactly where
+per-iteration work is small and launch overhead dominates, i.e.\ the
+microsecond-budget cells; batched execution matters where many instances
+% [P3] Flags "This paper ships the precision ... genes." The shipped precision
+%      gene cannot be varied without also changing loop structure (header note),
+%      so a catalog effect attributed to it is jointly a precision and a
+%      loop-structure effect. The best measured configuration, float32 iterates
+%      with chunked execution at K=256, is 2.11x over compiled float64 at K=64 and
+%      is not expressible in the shipped genome.
+%      source: results/tv_ffi_20260906/DECOMPOSITION_REPORT.md section 6.
+are solved simultaneously. This paper ships the precision, batching, and
+fused-versus-naive step genes; autogenerated fused kernels for the atoms are
+future work.
+
+\iclrTODO{Cross-hardware divergence table: evolve on two GPU architectures
+with identical instance distributions and show the winning genomes differ
+(consumer vs.\ data-center parts; FP64 throughput and memory bandwidth
+drive different certified optima).}
+
+\subsection{The temporal fusion kernel}
+
+% source: results/kernel_fusion_20260909/tv_temporal.cu
+The execution layer contains one construction no catalog gene expresses. The
+fused kernel runs $T$ iterations per launch with the tile resident in shared
+memory. For an output tile of edge $B$ it loads a shared tile of edge
+$S = B + 2T$, a halo of width exactly $T$ on every side. Iteration \texttt{it}
+computes the primal on $[\texttt{it}+1,\, S-\texttt{it})$ and the dual and the
+commit on $[\texttt{it}+1,\, S-\texttt{it}-1)$, so the valid region shrinks by
+exactly one cell per side per iteration. After the final iteration, at
+$\texttt{it} = T-1$, the committed region is $[T,\, B+T)$, and the write-back
+reads local index $T + o$ for $o \in [0, B)$. The interval closes exactly, with
+no slack and no redundant computation. Each fused iteration is three
+barrier-separated stages, a primal predict into scratch, a dual clip with an
+in-place relaxation, and a primal commit; stages two and three branch on
+$\rho = 1$ and write the unblended value, so at $\rho=1$ the blend never
+executes and no extra rounding accumulates.
+
+% source: build.py comment (5*(B+2T)^2*8 bytes) and the five shared pointers in
+% tv_temporal.cu; S and redundancy cross-checked in
+% results/diagnostics_20260909/roofline_4090.json. 64000 bytes at 32x4 is also
+% stated in results/kernel_fusion_20260909/REPORT.md.
+Shared memory holds five double arrays over the halo tile, $5(B+2T)^2 \cdot 8$
+bytes, which caps the tile size; tiles above 48\,KB request the opt-in
+carve-out. Table~\ref{tab:tiles} gives the measured geometry. Halo redundancy is
+$S^2/B^2$ and the per-iteration traffic reduction is $T$ divided by it, so the
+$24\times4$ tile runs four iterations at 1.7778 times the loads and moves 2.25
+times less data per iteration.
+
+\begin{table}[t]
+\centering
+\caption{Geometry of the measured tiles. Shared use is $5(B+2T)^2 \cdot 8$
+bytes; redundancy is $S^2/B^2$.}
+\label{tab:tiles}
+% source: results/diagnostics_20260909/roofline_4090.json for B, T, S, redundancy.
+% Shared bytes computed from the build.py formula.
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Tile & $B$ & $T$ & $S$ & Shared bytes & Redundancy \\
+\midrule
+$8\times4$  &  8 & 4 & 16 & 10240 & 4.00000 \\
+$16\times2$ & 16 & 2 & 20 & 16000 & 1.56250 \\
+$16\times4$ & 16 & 4 & 24 & 23040 & 2.25000 \\
+$24\times4$ & 24 & 4 & 32 & 40960 & 1.77778 \\
+$32\times2$ & 32 & 2 & 36 & 51840 & 1.26563 \\
+$32\times3$ & 32 & 3 & 38 & 57760 & 1.41016 \\
+$32\times4$ & 32 & 4 & 40 & 64000 & 1.56250 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% source: results/kernel_fusion_20260909/endtoend.py, "if args.K % T: continue";
+% solve_chunked calls _run_phase with K//F and max_iters//F and reports k*F.
+Fusion depth is coupled to cadence by a hard divisibility constraint: $T$ must
+divide $K$, because the fused kernel replaces $T$ iterations of the chunk runner
+and the chunk therefore takes $K/T$ steps. Measured tiles have
+$T \in \{2,3,4\}$ and measured cadences lie in $\{64,128,256,512\}$. This is the
+point at which the fusion choice and the certificate cadence stop being
+independent. Portability across the two architectures is by forward JIT of
+\texttt{compute\_80} PTX rather than by recompilation.
+% source: build.py compile flags -gencode=arch=compute_80,code=compute_80
+% CAVEAT for the coauthor: the temporal tile is NOT a gene in the shipped
+% genome. endtoend.py builds the kernels itself and calls
+% atlas.backend.precision._run_phase directly; the contract snapshot lists only
+% jax, tv_fused128, tv_fused256, tv_recip256 and states the Stage-0.5 kernel gate
+% "remains a hook only". Never assert that the tile is a gene.
+The tile is not currently expressible as a gene. The measurements below drive it
+from a harness, and the contract lists no temporal variant among the kernel
+values. We argue it should become one.
+
+\subsection{Numerical admission of the fused kernel}
+
+% source: results/kernel_fusion_20260909/validate.py
+Admission compares one fused launch against $T$ sequential launches of the
+single-step reference kernel \texttt{tv\_fused128} over a declared grid: sizes
+$64\times64$, $128\times128$ and $100\times130$, both the proximal and the
+gradient form, and $\rho \in \{1, 1.9\}$, at $t=0.05$, $s=1.0$, $\lambda=0.1$
+and $\text{inv}=1/(1+t)$. The size $100\times130$ is not a multiple of $B$, so
+the partial-tile write-back guard is exercised. The pass criterion is that the
+largest absolute primal and dual deviations fall below $10^{-12}$, with bitwise
+equality reported separately.
+
+% source: results/artifacts_20260910/kernel_admission_4090.log, 106 lines,
+% 102 printed cases, all at rho=1.9, over 17 tile shapes, sizes 64x64, 128x128
+% and 100x130 and both proximal settings, worst absolute deviation 4.649e-15,
+% PASS. The worst is reached at tv_tf8x8t64 and tv_tf16x8t128 on 100x130, both
+% T=8, log lines 13 and 55. validate.py prints a case only when it deviates by
+% more than 1e-12 or is not bitwise equal, so the rho=1 half of the same grid,
+% 102 further cases, is absent from the log precisely because every one of them
+% was bitwise equal. No Blackwell admission log exists under results/, so no
+% sm_120 figure is printed here.
+The archived run scores 17 tile variants, a superset of the timed tiles of
+Table~\ref{tab:tiles} that reaches $T=8$. Its worst absolute deviation is
+$4.649\times10^{-15}$, at $\rho=1.9$, reached on the two variants that fuse
+eight iterations, and it passes the declared $10^{-12}$ criterion on all 102
+printed cases. The script prints a case only when it is not bitwise equal to
+the sequential reference, and every printed case is at $\rho=1.9$, so at
+$\rho=1$ the fused launch reproduced the reference bit for bit in all 102 cases
+of that half of the grid. This record is the 4090 only.
+No admission run on the second architecture is archived, and none is claimed.
+
+% source: computed across the four files in results/kernel_fusion_20260909/e2e/
+% and the four in e2e_bw/. Worst relative gap disagreement per size, identical
+% on the two devices: 2.608e-11 at n=128, 5.655e-12 at 256, 1.224e-11 at 384,
+% 5.111e-12 at 496. The fusion harness as run drew its six scans with seed 0, a
+% different population from the catalog train fold; the manifest and the
+% reconciliation are in results/artifacts_20260910/A1_RESOLUTION.md.
+Archived data corroborates admission end to end: at every size the eight arms,
+two baseline execution structures and six fused tiles, return identical
+iteration counts on all six instances of the fusion harness draw, six scans at
+data seed 0, and at $n=128$ the worst relative disagreement between certified
+gaps is $2.608\times10^{-11}$. The timed arms run the gradient form with the
+reciprocal kernel variant at $\rho=1.9$, the branch where agreement is
+$4.649\times10^{-15}$ at worst rather than bitwise.
+% source: results/kernel_fusion_20260909/endtoend.py: call(tgt, ..., proximal=0,
+% rho=1.9, d["tv_inverse"]), key=(B,T,True) selects Reciprocal=True, timing is
+% the median of `repeats` runs after one discarded warmup, from _run_phase.

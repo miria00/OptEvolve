@@ -1,0 +1,1131 @@
+{
+ "version": 1,
+ "updated": "2026-09-10",
+ "layers": {
+  "general_pd": "instantiated for general primal-dual / monotone-inclusion splitting",
+  "lp": "practiced on linear programming",
+  "qp": "practiced on convex quadratic programming"
+ },
+ "schemes": [
+  {
+   "id": "krasnoselskii_mann",
+   "name": "Krasnosel'skii-Mann averaging",
+   "original": [
+    {
+     "authors": "W. R. Mann",
+     "year": 1953,
+     "title": "Mean value methods in iteration",
+     "venue": "Proc. Amer. Math. Soc. 4(3):506-510",
+     "citation_verified": false
+    },
+    {
+     "authors": "M. A. Krasnosel'skii",
+     "year": 1955,
+     "title": "Two remarks on the method of successive approximations",
+     "venue": "Uspekhi Mat. Nauk 10(1):123-127",
+     "citation_verified": false
+    }
+   ],
+   "update": "x_{k+1} = (1 - lam_k) x_k + lam_k T x_k",
+   "side_condition": "T nonexpansive; lam_k in [0,1] with sum lam_k (1 - lam_k) = inf. In the genome: relaxation rho of an averaged map, rho in (0,2), rho*alpha < 1 without an anchor",
+   "guarantee": "weak convergence to a fixed point in Hilbert space",
+   "genome": {
+    "wrapper_kind": "km",
+    "params": {
+     "rho": "relaxation"
+    }
+   },
+   "implementation": "atlas/wrappers/km.py:km_run",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_relaxation",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "the averaged-operator framework of LSCOMO and Bauschke-Combettes"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "relaxed PDHG in the PDLP lineage, e.g. r2HPDHG in cuPDLPx"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "relaxed splitting in OSQP and SCS"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "Implemented. The base averaging that Halpern and Ishikawa generalise."
+  },
+  {
+   "id": "halpern",
+   "name": "Halpern anchoring",
+   "original": [
+    {
+     "authors": "B. Halpern",
+     "year": 1967,
+     "title": "Fixed points of nonexpanding maps",
+     "venue": "Bull. Amer. Math. Soc. 73(6):957-961",
+     "citation_verified": true
+    }
+   ],
+   "update": "x_{k+1} = beta_k x_0 + (1 - beta_k) T x_k, beta_k = 1/(k+2)",
+   "side_condition": "T nonexpansive (averagedness <= 1)",
+   "guarantee": "strong convergence to the fixed point nearest x_0; O(1/k) fixed-point residual",
+   "genome": {
+    "wrapper_kind": "halpern",
+    "params": {}
+   },
+   "implementation": "atlas/wrappers/km.py:km_run",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_halpern",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "LSCOMO chapter 12 (optimal Halpern / OHM)"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "Restarted Halpern PDHG for LP, arXiv 2407.16144"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "Halpern-type acceleration extended to QP, survey arXiv 2506.02174; HPR-QP"
+     ]
+    },
+    "glm": {
+     "mined": "partial",
+     "evidence": [
+      "Preconditioned Halpern iteration with adaptive anchoring parameters (Numerical Algorithms, 2026): LASSO experiments"
+     ],
+     "queries": [
+      "Halpern iteration accelerated forward-backward proximal gradient restart lasso logistic regression",
+      "restarted Halpern anchored proximal gradient sparse generalized linear model GPU solver reflected"
+     ]
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "Implemented."
+  },
+  {
+   "id": "restart",
+   "name": "Fixed-frequency restart to the current iterate",
+   "original": [
+    {
+     "authors": "A. Nemirovski and Yu. Nesterov",
+     "year": 1985,
+     "title": "Optimal methods of smooth convex minimization",
+     "venue": "USSR Comput. Math. Math. Phys. 25(2):21-30",
+     "citation_verified": false
+    }
+   ],
+   "update": "every restart_k iterations reset the anchor (or momentum) to the current iterate",
+   "side_condition": "requires a restartable state; in this build the Halpern anchor (halpern=true)",
+   "guarantee": "linear convergence under sharpness (Hoffman 1952 error bound, Polyak 1979 sharp minima)",
+   "genome": {
+    "wrapper_kind": "restart",
+    "params": {
+     "restart_k": "int"
+    }
+   },
+   "implementation": "atlas/wrappers/km.py:km_run",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_restart",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Roulet and d'Aspremont, Sharpness, Restart and Acceleration, arXiv 1702.03828"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "Applegate et al., restarts and sharpness, arXiv 2105.12715"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "rAPDHG / PDQP, arXiv 2311.07710"
+     ]
+    },
+    "glm": {
+     "mined": false,
+     "queries": [
+      "Halpern iteration accelerated forward-backward proximal gradient restart lasso logistic regression",
+      "restarted Halpern anchored proximal gradient sparse generalized linear model GPU solver reflected"
+     ],
+     "note": "fixed-period restarts of a Halpern anchor on forward-backward for GLMs: not found"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "Implemented as fixed_k only; adaptive restart criteria are not in the genome."
+  },
+  {
+   "id": "anderson",
+   "name": "Anderson acceleration (type-I, safeguarded)",
+   "original": [
+    {
+     "authors": "D. G. Anderson",
+     "year": 1965,
+     "title": "Iterative procedures for nonlinear integral equations",
+     "venue": "J. ACM 12(4):547-560",
+     "citation_verified": false
+    }
+   ],
+   "update": "x_{k+1} = sum_i a_i T x_{k-m+i}, a = argmin || sum_i a_i (T x_i - x_i) || subject to sum_i a_i = 1",
+   "side_condition": "needs a safeguard (fall back to the plain step when the accelerated residual grows) for global convergence; lookback m",
+   "guarantee": "global convergence when safeguarded (Zhang, O'Donoghue, Boyd 2020); no worst-case speedup",
+   "genome": {
+    "wrapper_kind": "anderson",
+    "params": {
+     "lookback_m": "int",
+     "safeguard": "bool"
+    }
+   },
+   "implementation": "atlas/evolve/kb_composer.py:run_recipe",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_anderson",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Anderson Accelerated Douglas-Rachford Splitting, SIAM J. Sci. Comput., doi 10.1137/19m1290097"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "Anderson Accelerated PDHG for LP, arXiv 2508.08062 (Aug 2025)"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "SCS uses Anderson acceleration by default (acceleration_lookback=10)",
+      "Krylov subspace acceleration for first-order splitting in convex QP, arXiv 2511.06323"
+     ]
+    },
+    "glm": {
+     "mined": true,
+     "evidence": [
+      "Anderson acceleration of coordinate descent (Bertrand & Massias, AISTATS 2021), used in skglm",
+      "Anderson acceleration of proximal gradient methods (Mai & Johansson, ICML 2020, PMLR 119): logistic regression experiments"
+     ]
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "MINED on every layer. Listed as unmined in an earlier assessment in error. Useful as a result to REPRODUCE, not to claim."
+  },
+  {
+   "id": "passty",
+   "name": "Passty ergodic averaging",
+   "original": [
+    {
+     "authors": "G. B. Passty",
+     "year": 1979,
+     "title": "Ergodic convergence to a zero of the sum of monotone operators in Hilbert space",
+     "venue": "J. Math. Anal. Appl. 72(2):383-390",
+     "citation_verified": true
+    }
+   ],
+   "update": "return the weighted average xbar_k = sum_i lam_i x_i / sum_i lam_i of a splitting sequence",
+   "side_condition": "sum lam_k = inf for the original forward-backward setting; constant weights for averaged maps",
+   "guarantee": "ergodic convergence even when the iterates themselves do not converge; O(1/k) ergodic gap",
+   "genome": {
+    "wrapper_kind": "ergodic",
+    "params": {
+     "weights": "uniform|step"
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "ergodic rates are the standard PDHG analysis (Chambolle-Pock)"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "PDLP restarts to averaged iterates; restarted averaged PDHG, arXiv 2206.03041"
+     ]
+    },
+    "qp": {
+     "mined": "partial",
+     "evidence": [
+      "rAPDHG / PDQP restart scheme, arXiv 2311.07710"
+     ],
+     "note": "averaging inside a QP restart scheme; not verified as Passty-style weighting"
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "MINED for LP. Listed as unmined in an earlier assessment in error."
+  },
+  {
+   "id": "bregman",
+   "name": "Bregman (mirror) proximal primal-dual",
+   "original": [
+    {
+     "authors": "L. M. Bregman",
+     "year": 1967,
+     "title": "The relaxation method of finding the common point of convex sets and its application to the solution of problems in convex programming",
+     "venue": "USSR Comput. Math. Math. Phys. 7(3):200-217",
+     "citation_verified": false
+    }
+   ],
+   "update": "replace the Euclidean prox with a Bregman prox D_h; for the nonnegative orthant h = negative entropy gives multiplicative primal updates",
+   "side_condition": "h Legendre and 1-strongly convex in the norm used for the step condition tau*sigma*||L||^2 < 1 (in that norm)",
+   "guarantee": "ergodic O(1/k) (Chambolle-Pock 2016 with Bregman distances)",
+   "genome": {
+    "scheme": "pdhg_entropic",
+    "params": {}
+   },
+   "implementation": "atlas/schemes/base_schemes.py:_build_pdhg_entropic",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_pdhg_entropic",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Chambolle-Pock ergodic-rate analysis with Bregman distances",
+      "Bregman primal-dual first-order method and application to sparse SDP (Jiang, Vandenberghe)"
+     ]
+    },
+    "lp": {
+     "mined": false,
+     "queries": [
+      "Bregman proximal primal-dual hybrid gradient linear programming mirror descent PDHG non-Euclidean"
+     ]
+    },
+    "qp": {
+     "mined": false,
+     "queries": [
+      "Bregman proximal primal-dual hybrid gradient linear programming mirror descent PDHG non-Euclidean"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "FRONTIER, IMPLEMENTED 2026-09-10 as base scheme pdhg_entropic (not yet a genome scheme gene; reachable through build_scheme). GATE FINDING: the entropy kernel admits a step condition only where the constraints imply a simplex; the transport families declare it (sum x = 1) and get t*s*||L||_{1->2}^2 < 1 with ||L||_{1->2} = sqrt(2), size independent, where the Euclidean gate is t*s*(m+n) < 1. The plain standard-form LP orthant and the QP cell are rejected. DUAL RECOVERY required: the redundant simplex multiplier never enters u, so the certified dual is u - min(c + L^T u) w_S (w_S = source indicator); without it the LP gap stalls at 0.93."
+  },
+  {
+   "id": "haugazeau",
+   "name": "Haugazeau best-approximation outer step",
+   "original": [
+    {
+     "authors": "Y. Haugazeau",
+     "year": 1968,
+     "title": "Sur les inequations variationnelles et la minimisation de fonctionnelles convexes",
+     "venue": "These, Universite de Paris",
+     "citation_verified": false
+    }
+   ],
+   "update": "x_{k+1} = Q(x_0, x_k, T x_k), Q(a,b,c) = projection of a onto H(a,b) intersect H(b,c), H(x,y) = {z : <z - y, x - y> <= 0}; closed form in Bauschke-Combettes",
+   "side_condition": "T firmly (or quasi-) nonexpansive with Fix T nonempty closed convex",
+   "guarantee": "STRONG convergence to the projection of x_0 onto Fix T, where KM gives only weak convergence",
+   "genome": {
+    "wrapper_kind": "haugazeau",
+    "params": {}
+   },
+   "implementation": "atlas/wrappers/km.py:haugazeau_coefficients",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_haugazeau",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Solving composite monotone inclusions by constructing best Bregman approximations from their Kuhn-Tucker set, arXiv 1505.00362",
+      "Inducing strong convergence into the asymptotic behaviour of proximal splitting algorithms, arXiv 1609.01627",
+      "Proximal primal-dual best approximation algorithm with memory, arXiv 1610.08697"
+     ]
+    },
+    "lp": {
+     "mined": false,
+     "queries": [
+      "Ishikawa iteration OR Haugazeau method primal-dual splitting PDHG linear programming acceleration",
+      "Haugazeau strong convergence primal-dual splitting algorithm Combettes best approximation linear programming"
+     ]
+    },
+    "qp": {
+     "mined": false,
+     "queries": [
+      "Ishikawa iteration OR Haugazeau method primal-dual splitting PDHG linear programming acceleration",
+      "Haugazeau strong convergence primal-dual splitting algorithm Combettes best approximation linear programming"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "FRONTIER, IMPLEMENTED 2026-09-10 as genome wrapper.kind='haugazeau' on pdhg/condat_vu (km loop and device-loop policy runner). Q is evaluated in the PDHG metric M, the metric of the averagedness certificate, on F = I + (T - I)/(2 alpha). Strong-convergence target is the solution nearest the start, a natural fit for warm-started re-solves.",
+   "measured": {
+    "qp_maros_meszaros_2026-09-10": "REJECTED BY MEASUREMENT. Condat-Vu, f64, K=64, CPU single thread, tol 1e-4 on qp_rel_kkt, cap 5e4: on 122 instances plain solves 53 and Ruiz(10) 63; with Haugazeau 8 and 9. Where both solve, 20x (plain) and 34x (Ruiz) more iterations, about 8x more time. Solves no instance the base arm misses. results/qp_20260910/haug_shard*.json"
+   }
+  },
+  {
+   "id": "ishikawa",
+   "name": "Ishikawa two-step averaging",
+   "original": [
+    {
+     "authors": "S. Ishikawa",
+     "year": 1974,
+     "title": "Fixed points by a new iteration method",
+     "venue": "Proc. Amer. Math. Soc. 44(1):147-150",
+     "citation_verified": false
+    }
+   ],
+   "update": "y_k = (1 - b_k) x_k + b_k T x_k;  x_{k+1} = (1 - a_k) x_k + a_k T y_k",
+   "side_condition": "original: T Lipschitz pseudocontractive on a compact convex set, 0 <= a_k <= b_k <= 1, b_k -> 0, sum a_k b_k = inf. For nonexpansive T a gate condition must be derived",
+   "guarantee": "strong convergence under the original compactness hypothesis; for nonexpansive T in Hilbert space the guarantee is not established here",
+   "genome": {
+    "wrapper_kind": "ishikawa",
+    "params": {
+     "a": "schedule",
+     "b": "schedule"
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": false,
+     "queries": [
+      "Ishikawa iteration OR Haugazeau method primal-dual splitting PDHG linear programming acceleration",
+      "Ishikawa iteration nonexpansive two-step primal-dual splitting convex optimization algorithm quadratic programming"
+     ],
+     "note": "fixed-point literature on Ishikawa exists; primal-dual splitting instantiation not found"
+    },
+    "lp": {
+     "mined": false,
+     "queries": [
+      "Ishikawa iteration OR Haugazeau method primal-dual splitting PDHG linear programming acceleration",
+      "Ishikawa iteration nonexpansive two-step primal-dual splitting convex optimization algorithm quadratic programming"
+     ]
+    },
+    "qp": {
+     "mined": false,
+     "queries": [
+      "Ishikawa iteration OR Haugazeau method primal-dual splitting PDHG linear programming acceleration",
+      "Ishikawa iteration nonexpansive two-step primal-dual splitting convex optimization algorithm quadratic programming"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "RISKIEST. Not found even in general primal-dual theory, so the gate side condition must be derived before it can be admitted."
+  },
+  {
+   "id": "solodov_svaiter",
+   "name": "Solodov-Svaiter hybrid projection-proximal step",
+   "original": [
+    {
+     "authors": "M. V. Solodov and B. F. Svaiter",
+     "year": 1999,
+     "title": "A hybrid projection-proximal point algorithm",
+     "venue": "J. Convex Anal. 6(1):59-70",
+     "citation_verified": true
+    }
+   ],
+   "update": "inexact prox step gives y_k and v_k in the operator at y_k; then project x_k onto the separating hyperplane: x_{k+1} = x_k - (<v_k, x_k - y_k> / ||v_k||^2) v_k",
+   "side_condition": "relative error ||e_k|| <= sigma * max(||v_k||, ||x_k - y_k||), sigma in [0,1)",
+   "guarantee": "weak global convergence, local linear rate; the projection costs nothing extra and permits loose inner solves",
+   "genome": {
+    "wrapper_kind": "hybrid_projection",
+    "params": {
+     "sigma": "float in [0,1)"
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "hybrid proximal extragradient (HPE) framework; A hybrid approximate extragradient-proximal point algorithm using the enlargement of a maximal monotone operator, Set-Valued Anal."
+     ]
+    },
+    "lp": {
+     "mined": false,
+     "queries": [
+      "Solodov Svaiter hybrid projection proximal point algorithm primal-dual linear programming quadratic programming first-order"
+     ]
+    },
+    "qp": {
+     "mined": false,
+     "queries": [
+      "Solodov Svaiter hybrid projection proximal point algorithm primal-dual linear programming quadratic programming first-order"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "FRONTIER. The loose-inner-solve tolerance matters for QP, where PDHG's prox of the quadratic is a linear solve."
+  },
+  {
+   "id": "adaptive_step_ratio",
+   "kind": "controller",
+   "source": "author_code_harvest",
+   "name": "Adaptive step ratio (OSQP adaptive rho; PDLP primal weight)",
+   "original": [
+    {
+     "authors": "B. Stellato, G. Banjac, P. Goulart, A. Bemporad, S. Boyd",
+     "year": 2020,
+     "title": "OSQP: an operator splitting solver for quadratic programs",
+     "venue": "Math. Prog. Comp. 12:637-672",
+     "citation_verified": true
+    },
+    {
+     "authors": "D. Applegate, M. Diaz, O. Hinder, H. Lu, M. Lubin, B. O'Donoghue, W. Schudy",
+     "year": 2021,
+     "title": "Practical large-scale linear programming using primal-dual hybrid gradient",
+     "venue": "NeurIPS 2021",
+     "citation_verified": true
+    },
+    {
+     "authors": "T. Goldstein, M. Li, X. Yuan",
+     "year": 2015,
+     "title": "Adaptive primal-dual splitting methods for statistical learning and image processing",
+     "venue": "NeurIPS 2015 (arXiv 1305.0546)",
+     "citation_verified": false
+    }
+   ],
+   "update": "at restart / chunk boundaries only: OSQP rho <- rho*sqrt((||r_prim||/scale_p)/(||r_dual||/scale_d)); PDLP omega <- exp(theta*log(||dy||/||dx||) + (1-theta)*log(omega)); the step product t*s stays at the gate bound, only the ratio moves",
+   "side_condition": "the base gate holds for every ratio used (t*s*||L||^2 < 1 is ratio-free); convergence kept if the ratio is updated finitely often or at restarts with the anchor reset (OSQP limits adaptation; PDLP updates only at restarts)",
+   "guarantee": "base-scheme guarantee per epoch; no rate claim for the adaptation itself; certificate unchanged (original-problem check)",
+   "genome": {
+    "gene": "backend/controller.step_ratio",
+    "params": {
+     "policy": "fixed|omega0|pdlp_primal_weight|osqp_adaptive",
+     "theta": "float"
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Goldstein-Li-Yuan adaptive PDHG (arXiv 1305.0546)"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "PDLP primal weight updates (NeurIPS 2021)"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "OSQP adaptive rho (Stellato et al. 2020)"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "HARVESTED, requested by the user 2026-09-10. Highest priority: the DOTmark calibration failed because omega0 = ||c||/||b|| is about 1e7 and the searched ratio grid missed it by seven orders of magnitude; a fixed ratio cannot follow the scale. Certified version: see variable_metric_schedule (Combettes-Vu metric budget).",
+   "measured": {
+    "dotmark_ot_2026-09-10": "Plain PDHG on DOTmark (4090, reduction operator): a fixed ratio grid r in [0.03, 30] certified NOTHING in 5e4 iterations (the plan sat at zero). With r = kappa/omega0, omega0 = ||c||/||b|| = 8.8e6, it certifies 1e-4 in 5184 iterations at kappa = 30 (res 32) and 5888 at kappa = 100 (res 64). The initial primal weight alone turns failure into convergence; kappa drifts with size (30 to 100 to 1000 for a 1e-3 objective), which is the case for adapting it. results/ot_dotmark_20260910/calib_gpu_omega_res32.json, kappa_*.json"
+   }
+  },
+  {
+   "id": "factorized_prox",
+   "kind": "linear_algebra",
+   "source": "author_code_harvest",
+   "name": "Factorisation-based steps (cached KKT / quadratic prox factor)",
+   "original": [
+    {
+     "authors": "B. Stellato, G. Banjac, P. Goulart, A. Bemporad, S. Boyd",
+     "year": 2020,
+     "title": "OSQP: an operator splitting solver for quadratic programs",
+     "venue": "Math. Prog. Comp. 12:637-672",
+     "citation_verified": true
+    },
+    {
+     "authors": "Y. Huang, W. Zhang, H. Li, et al.",
+     "year": 2024,
+     "title": "Restarted primal-dual hybrid conjugate gradient method for large-scale quadratic programming",
+     "venue": "arXiv 2405.16160",
+     "citation_verified": false
+    }
+   ],
+   "update": "prox of f(x) = (1/2)x'Px + q'x by (I + tP)x = v - tq: exact via a cached sparse Cholesky/LDL' (refactor only when t changes) or inexact via warm-started CG with a summable tolerance schedule; a factorised ADMM on the quasi-definite KKT matrix is OSQP itself",
+   "side_condition": "exact: none beyond the base gate; inexact: prox errors eps_k with sum eps_k < inf (inexact PPM / Rockafellar 1976)",
+   "guarantee": "makes PDHG (prox of f) admissible on QP; the scheme's own guarantee",
+   "genome": {
+    "gene": "operator.prox_impl",
+    "params": {
+     "impl": "none|cg:k|cholesky"
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "inexact proximal point, Rockafellar 1976"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "interior point and ADMM LP solvers factorise"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "OSQP QDLDL factorisation",
+      "rPDHCG (arXiv 2405.16160)"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "HARVESTED. Makes the method axis live on QP: QuadraticForm today has no prox, so PDHG is rejected; with prox_impl it is admitted. CPU: scipy/CHOLMOD; GPU: CG first."
+  },
+  {
+   "id": "polish",
+   "kind": "postprocess",
+   "source": "author_code_harvest",
+   "name": "Solution polishing (active-set reduced solve)",
+   "original": [
+    {
+     "authors": "B. Stellato, G. Banjac, P. Goulart, A. Bemporad, S. Boyd",
+     "year": 2020,
+     "title": "OSQP: an operator splitting solver for quadratic programs",
+     "venue": "Math. Prog. Comp. 12:637-672",
+     "citation_verified": true
+    },
+    {
+     "authors": "D. Applegate, O. Hinder, H. Lu, M. Lubin, et al.",
+     "year": 2025,
+     "title": "PDLP: a practical first-order method for large-scale linear programming (feasibility polishing)",
+     "venue": "arXiv 2501.07018",
+     "citation_verified": false
+    }
+   ],
+   "update": "after the first-order phase: guess the active set from (x, y), solve the reduced equality-constrained KKT system (QP) or the support-restricted problem (LP/OT) once, keep the polished point only if the shared certificate improves",
+   "side_condition": "none for soundness: the polished point is accepted only after the original-problem certificate verifies it",
+   "guarantee": "no convergence claim; exact solution when the active set is guessed correctly",
+   "genome": {
+    "gene": "postprocess.polish",
+    "params": {
+     "on": "bool",
+     "trigger_tol": "float"
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": false,
+     "queries": [
+      "active set polishing primal-dual splitting certificate"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "PDLP feasibility polishing (arXiv 2501.07018)"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "OSQP solution polishing (Stellato et al. 2020)"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "HARVESTED. For OT the analogue is a support-restricted exact solve (a network-simplex finish on the plan's support); first-order only has to find the support."
+  },
+  {
+   "id": "variable_metric_schedule",
+   "kind": "controller",
+   "source": "paper_scan_2026-09-10",
+   "name": "Certified variable metric schedule (the gate under adaptive step ratios)",
+   "original": [
+    {
+     "authors": "J.F. Bonnans, J.Ch. Gilbert, C. Lemarechal, C.A. Sagastizabal",
+     "year": 1995,
+     "title": "A family of variable metric proximal methods",
+     "venue": "Math. Programming 68:15-47",
+     "citation_verified": true
+    },
+    {
+     "authors": "P.L. Combettes, B.C. Vu",
+     "year": 2013,
+     "title": "Variable metric quasi-Fejer monotonicity",
+     "venue": "Nonlinear Analysis 78:17-31 (arXiv 1206.5705)",
+     "citation_verified": true
+    },
+    {
+     "authors": "P.L. Combettes, B.C. Vu",
+     "year": 2014,
+     "title": "Variable metric forward-backward splitting with applications to monotone inclusions in duality",
+     "venue": "Optimization 63:1289-1318",
+     "citation_verified": true
+    }
+   ],
+   "update": "the metric M_n of the prox steps (scalar primal weight, diagonal, or L-BFGS) may change, only at chunk boundaries",
+   "side_condition": "splitting schemes: alpha I <= M_n <= beta I and M_{n+1} <= (1 + eta_n) M_n with sum eta_n < inf (Combettes-Vu 2013, 2014); proximal point on f: sufficient decrease and sum lambda_min(M_n^{-1}) = inf (Bonnans et al. 1995, Thm 2.3). Every new metric re-passes the base step condition in that metric",
+   "guarantee": "convergence of the base scheme preserved (variable metric quasi-Fejer monotonicity)",
+   "genome": {
+    "gene": "backend/controller.metric_schedule",
+    "params": {
+     "kind": "fixed|primal_weight|diagonal|lbfgs",
+     "update_every": "multiple of K",
+     "eta_budget": "float"
+    }
+   },
+   "implementation": "atlas/backend/adaptive.py:run_adaptive",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_metric_schedule",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Combettes-Vu variable metric FB and primal-dual (2013, 2014)"
+     ]
+    },
+    "lp": {
+     "mined": "partial",
+     "evidence": [
+      "PDLP primal-weight updates (heuristic, no metric budget)",
+      "Monitoring the convergence speed of PDHG to find better step sizes, arXiv 2403.19202"
+     ]
+    },
+    "qp": {
+     "mined": "partial",
+     "evidence": [
+      "OSQP adaptive rho (heuristic, triggers refactorisation)"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "Makes adaptive_step_ratio a GATED gene: adaptation admitted only with a finite eta budget (finitely many or summable relative changes). Practice adapts without such a certificate. IMPLEMENTED 2026-09-11 (runner level, not yet a genome gene): PDLP rule at epoch boundaries, eta_n = max(0, t/t'-1, s/s'-1)/(1-theta) charged per move (M_n >= (1-theta) D_n; checked numerically over 200 random moves in tests/test_adaptive.py), every (t, s) on the gate boundary."
+  },
+  {
+   "id": "quasi_newton_metric",
+   "kind": "linear_algebra",
+   "source": "paper_scan_2026-09-10",
+   "name": "Quasi-Newton primal metric (qN-AP3 / BFGS-proximal, limited memory)",
+   "original": [
+    {
+     "authors": "J.F. Bonnans, J.Ch. Gilbert, C. Lemarechal, C.A. Sagastizabal",
+     "year": 1995,
+     "title": "A family of variable metric proximal methods",
+     "venue": "Math. Programming 68:15-47",
+     "citation_verified": true
+    },
+    {
+     "authors": "S. Becker, J. Fadili, P. Ochs",
+     "year": 2019,
+     "title": "On quasi-Newton forward-backward splitting: proximal calculus and convergence",
+     "venue": "arXiv 1801.08691",
+     "citation_verified": false
+    }
+   ],
+   "update": "primal step x+ = x - T_n (grad f(x) + A^T u), T_n = M_n^{-1} from L-BFGS on secant pairs s = x_{n+1}-x_n, y = grad f(x_{n+1}) - grad f(x_n) (= P s exactly for QP); skip pairs with (y,s) <= eps |s|^2; damp to keep alpha I <= M_n <= beta I",
+   "side_condition": "composite with separable primal term g = 0 (OSQP form), so no prox in the non-diagonal metric is needed; step condition in the metric (power iteration on T P and A T A^T) re-checked at each metric change; metric budget as in variable_metric_schedule",
+   "guarantee": "Bonnans et al.: global and q-superlinear for the smooth proximal point under bounded deterioration; in the constrained composite only the base-scheme guarantee is claimed",
+   "genome": {
+    "gene": "operator.primal_metric",
+    "params": {
+     "kind": "identity|jacobi|lbfgs:m"
+    }
+   },
+   "implementation": "atlas/schemes/base_schemes.py:_build_condat_vu_metric",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_condat_vu_metric",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Bonnans-Gilbert-Lemarechal-Sagastizabal 1995",
+      "quasi-Newton forward-backward, arXiv 1801.08691",
+      "inertial quasi-Newton for monotone inclusions, arXiv 2209.14019"
+     ]
+    },
+    "lp": {
+     "mined": false,
+     "queries": [
+      "quasi-Newton OR L-BFGS variable metric preconditioned PDHG primal-dual quadratic programming linear programming 2023 2024 2025"
+     ]
+    },
+    "qp": {
+     "mined": false,
+     "queries": [
+      "quasi-Newton OR L-BFGS variable metric preconditioned PDHG primal-dual quadratic programming linear programming 2023 2024 2025"
+     ]
+    },
+    "glm": {
+     "mined": true,
+     "evidence": [
+      "glmnet proximal Newton / IRLS outer loop; skglm ProxNewton solver"
+     ]
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "FRONTIER CANDIDATE on ONE search only; verify further before claiming. For a QP the secant pair is exact (y = P s), and g = 0 makes any primal metric implementable at matvec cost. IMPLEMENTED 2026-09-11 as builder condat_vu_metric (L-BFGS T from Krylov or warm-up secant pairs, atlas/operators/primal_metric.py). Gate: lambda_max(T P)/2 + s||A T A^T|| < 1, a sufficient condition derived here; admission test verifies firm nonexpansiveness in the claimed metric (tests/test_primal_metric.py).",
+   "measured": {
+    "qp_maros_meszaros_2026-09-11": "NEGATIVE ON AVERAGE. 137 instances, Condat-Vu, CPU, 1e-4, cap 5e4, same runner: scalar solves 55, Krylov-pair L-BFGS (m=10) 55 (+1/-1), warm-up-iterate L-BFGS 53 (+2/-4). Where both solve: Krylov 1.20x iterations and 1.52x time (geo mean), fewer iterations on 28 of 54; iterates 1.16x iterations, 1.27x time. results/primal_metric_20260911/"
+   }
+  },
+  {
+   "id": "matched_metric_reflection",
+   "kind": "wrapper_combination",
+   "source": "paper_scan_2026-09-10",
+   "name": "Reflection (step 2) under a metric matched to curvature, safeguarded",
+   "original": [
+    {
+     "authors": "J.F. Bonnans, J.Ch. Gilbert, C. Lemarechal, C.A. Sagastizabal",
+     "year": 1995,
+     "title": "A family of variable metric proximal methods",
+     "venue": "Math. Programming 68:15-47",
+     "citation_verified": true
+    }
+   ],
+   "update": "x_{n+1} = x_n + 2 (x^p_n - x_n) when the metric approximates the Hessian of the smooth part (with M = Hessian the prox goes half way); line search t in [1, 2] preferring t = 2, falling back on a failed descent test",
+   "side_condition": "rho = 2 admitted under the anchor only for (1/2)-averaged maps (pdhg in its metric); safeguard = the existing switch wrapper, which accepts the aggressive branch only while the certificate improves",
+   "guarantee": "base-scheme guarantee through the safeguard; superlinear for the smooth proximal point (Bonnans et al., Sec. 4)",
+   "genome": {
+    "gene": "params.rho + mix.switch (+ operator.primal_metric)",
+    "params": {
+     "rho": 2.0
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Bonnans et al. 1995, ideal step 2"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "Restarted reflected Halpern PDHG for LP, arXiv 2407.16144"
+     ]
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "HPR-QP (Halpern-type reflection for QP)"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "Reflection itself is mined; what the paper adds is when it pays (matched metric). Measured without a matched metric: reflected Halpern restarts did not help on DOTmark OT."
+  },
+  {
+   "id": "relative_inexact_prox",
+   "kind": "acceptance_test",
+   "source": "paper_scan_2026-09-10",
+   "name": "Relative acceptance test for inexact proximal steps",
+   "original": [
+    {
+     "authors": "J.F. Bonnans, J.Ch. Gilbert, C. Lemarechal, C.A. Sagastizabal",
+     "year": 1995,
+     "title": "A family of variable metric proximal methods",
+     "venue": "Math. Programming 68:15-47",
+     "citation_verified": true
+    }
+   ],
+   "update": "accept an approximate prox pi when f(pi) - phi(pi) <= (1 - m)[f(x_n) - phi(pi)] for a lower model phi <= f (Bonnans et al. 1995, Prop. 2.2); for CG inner solves of the quadratic prox, a relative residual test of the same type",
+   "side_condition": "phi closed convex with phi <= f; m in (0, 1)",
+   "guarantee": "global convergence of the outer variable metric proximal point (Thm 2.3)",
+   "genome": {
+    "gene": "operator.prox_impl.accept",
+    "params": {
+     "m": "float in (0,1)"
+    }
+   },
+   "implementation": null,
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Solodov-Svaiter relative error rules",
+      "FISTA with relative error rules, arXiv 2005.03766"
+     ]
+    },
+    "lp": {
+     "mined": "unchecked",
+     "queries": [
+      "relative error inexact proximal step conjugate gradient restarted PDHG quadratic programming rPDHCG inexact criterion"
+     ],
+     "note": "not applicable: the LP primal prox is an exact clip, so there is no inexact subproblem"
+    },
+    "qp": {
+     "mined": true,
+     "evidence": [
+      "rPDHCG (INFORMS J. Computing, doi 10.1287/ijoc.2024.0983): CG-inexact primal subproblems",
+      "GPU conic QP with a relative proximal-error budget for restarted PDHG, arXiv 2608.09159"
+     ]
+    },
+    "glm": {
+     "mined": "unchecked"
+    }
+   },
+   "checked": "2026-09-10",
+   "notes": "NOT frontier on QP. LP needs no inexact prox (the primal prox is an exact clip). Useful as the stopping rule for our factorized_prox CG option."
+  },
+  {
+   "id": "fista",
+   "kind": "scheme",
+   "source": "classical",
+   "name": "FISTA with adaptive restart",
+   "original": [
+    {
+     "authors": "A. Beck, M. Teboulle",
+     "year": 2009,
+     "title": "A fast iterative shrinkage-thresholding algorithm for linear inverse problems",
+     "venue": "SIAM J. Imaging Sciences",
+     "citation_verified": false
+    },
+    {
+     "authors": "B. O'Donoghue, E. Candes",
+     "year": 2015,
+     "title": "Adaptive restart for accelerated gradient schemes",
+     "venue": "Foundations of Computational Mathematics",
+     "citation_verified": false
+    }
+   ],
+   "update": "x+ = prox(y - a grad f(y)); t+ = (1 + sqrt(1 + 4t^2))/2; y+ = x+ + ((t-1)/t+)(x+ - x); restart t=1, y=x+ when <y - x+, x+ - x> > 0",
+   "side_condition": "0 < a <= 1/L, f with L-Lipschitz gradient, g prox-friendly, no linear map",
+   "guarantee": "objective O(1/k^2) between restarts; not an averaged map (no wrappers)",
+   "genome": {
+    "scheme": "fista",
+    "params": {
+     "restart": "bool"
+    }
+   },
+   "implementation": "atlas/schemes/base_schemes.py:_build_fista",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_fista",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Beck-Teboulle 2009; O'Donoghue-Candes 2015"
+     ]
+    },
+    "lp": {
+     "mined": "unchecked"
+    },
+    "qp": {
+     "mined": "unchecked"
+    },
+    "glm": {
+     "mined": true,
+     "evidence": [
+      "skglm FISTA solver; Beck-Teboulle 2009 on l1-regularized problems"
+     ]
+    }
+   },
+   "checked": "2026-09-11",
+   "notes": "Added 2026-09-11 so the logistic elastic-net comparison has an accelerated first-order arm; not yet a genome scheme gene."
+  },
+  {
+   "id": "gap_safe_screening",
+   "kind": "reduction",
+   "source": "paper_scan_2026-09-10",
+   "name": "Gap Safe screening (certificate-driven structure reduction)",
+   "original": [
+    {
+     "authors": "E. Ndiaye, O. Fercoq, A. Gramfort, J. Salmon",
+     "year": 2017,
+     "title": "Gap Safe screening rules for sparsity enforcing penalties",
+     "venue": "JMLR 18",
+     "citation_verified": true
+    }
+   ],
+   "update": "at a certificate check: r = sqrt(2 gap / gamma_D); discard feature j when |x_j^T u| + r ||x_j|| < lam alpha (1 - margin); for logistic loss gamma_D = 4n, r = sqrt(gap/(2n))",
+   "side_condition": "none for soundness beyond the dual strong concavity bound; a relative margin guards the strict inequality in floating point",
+   "guarantee": "screened features are zero at every optimum (safe); the reduced problem has the same solution",
+   "genome": {
+    "gene": "reduction.screening",
+    "params": {
+     "every": "certificate checks",
+     "margin": "float"
+    }
+   },
+   "implementation": "atlas/certify/residuals.py:logreg_enet_gap_safe_screen",
+   "gate_rule": null,
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "Gap Safe rules, JMLR 2017",
+      "celer (Massias et al.): Gap Safe + working sets"
+     ]
+    },
+    "lp": {
+     "mined": "unchecked"
+    },
+    "qp": {
+     "mined": "unchecked"
+    },
+    "glm": {
+     "mined": true,
+     "evidence": [
+      "Gap Safe rules cover logistic regression (Ndiaye et al. 2017); celer"
+     ]
+    }
+   },
+   "checked": "2026-09-11",
+   "notes": "IMPLEMENTED for elastic-net logistic regression. Not new by itself (celer, skglm); the planned novelty is using the shrinking problem to re-plan device and method mid-solve. alpha = 1 defect fixed with a 1e-9 margin."
+  },
+  {
+   "id": "adaptive_restart",
+   "kind": "wrapper",
+   "source": "classical",
+   "name": "Adaptive restart (residual-triggered)",
+   "original": [
+    {
+     "authors": "B. O'Donoghue, E. Candes",
+     "year": 2015,
+     "title": "Adaptive restart for accelerated gradient schemes",
+     "venue": "Foundations of Computational Mathematics",
+     "citation_verified": false
+    },
+    {
+     "authors": "D. Applegate et al.",
+     "year": 2021,
+     "title": "Practical large-scale linear programming using primal-dual hybrid gradient",
+     "venue": "NeurIPS 2021",
+     "citation_verified": true
+    }
+   ],
+   "update": "restart the Halpern anchor when ||x - T x|| <= beta * (residual at the last restart)",
+   "side_condition": "Halpern on a nonexpansive map; beta in (0, 1)",
+   "guarantee": "each segment ends in finitely many steps (Halpern residual bound); residual shrinks geometrically across restarts",
+   "genome": {
+    "gene": "wrapper.restart",
+    "params": {
+     "kind": "adaptive",
+     "beta": "float"
+    }
+   },
+   "implementation": "atlas/evolve/kb_composer.py:run_recipe",
+   "gate_rule": "atlas/typing_/rules.py:typecheck_adaptive_restart",
+   "status": {
+    "general_pd": {
+     "mined": true,
+     "evidence": [
+      "PDLP adaptive restarts for PDHG",
+      "Restarted reflected Halpern acceleration for augmented primal-dual methods, arXiv 2606.16552 (June 2026)"
+     ]
+    },
+    "lp": {
+     "mined": true,
+     "evidence": [
+      "PDLP (Applegate et al. 2021); restarted Halpern PDHG arXiv 2407.16144"
+     ]
+    },
+    "qp": {
+     "mined": "unchecked"
+    },
+    "glm": {
+     "mined": "partial",
+     "evidence": [
+      "restarted FISTA on lasso/logistic: O'Donoghue & Candes 2015; arXiv 1709.02300"
+     ],
+     "queries": [
+      "Halpern iteration accelerated forward-backward proximal gradient restart lasso logistic regression",
+      "restarted Halpern anchored proximal gradient sparse generalized linear model GPU solver reflected"
+     ],
+     "note": "restarting a HALPERN ANCHOR on forward-backward for GLMs: not found in the queries above"
+    }
+   },
+   "checked": "2026-09-11",
+   "notes": "Added for the KB composer. Restarting FISTA on GLMs is known; restarting a Halpern anchor on forward-backward for GLMs is not recorded."
+  }
+ ],
+ "lineage": [
+  {
+   "id": "arrow_hurwicz_uzawa",
+   "year": 1958,
+   "source": "Arrow, Hurwicz, Uzawa, Studies in Linear and Nonlinear Programming",
+   "descendant": "PDHG (Chambolle-Pock 2011); genome scheme pdhg"
+  },
+  {
+   "id": "korpelevich",
+   "year": 1976,
+   "source": "Korpelevich, extragradient",
+   "descendant": "extragradient and optimistic primal-dual methods"
+  },
+  {
+   "id": "popov",
+   "year": 1980,
+   "source": "Popov, modified Arrow-Hurwicz",
+   "descendant": "reflected / optimistic gradient"
+  },
+  {
+   "id": "douglas_rachford",
+   "year": 1956,
+   "source": "Douglas and Rachford; Lions and Mercier 1979",
+   "descendant": "DRS, ADMM, reflected Halpern; genome scheme drs"
+  },
+  {
+   "id": "moreau",
+   "year": 1965,
+   "source": "Moreau, Proximite et dualite",
+   "descendant": "proximity operators, variable metric; genome metric gene"
+  },
+  {
+   "id": "minty",
+   "year": 1962,
+   "source": "Minty, monotone operators",
+   "descendant": "the monotone-operator frame every entry above lives in"
+  },
+  {
+   "id": "rockafellar",
+   "year": 1976,
+   "source": "Rockafellar, proximal point algorithm",
+   "descendant": "proximal point and its inexact variants"
+  },
+  {
+   "id": "hoffman",
+   "year": 1952,
+   "source": "Hoffman error bound; Lojasiewicz 1963; Polyak 1979",
+   "descendant": "sharpness, the quantity restarts exploit"
+  }
+ ]
+}

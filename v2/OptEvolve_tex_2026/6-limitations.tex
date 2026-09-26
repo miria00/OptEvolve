@@ -1,0 +1,6 @@
+\section{Limitations}
+\label{sec:limitations}
+
+OptEvolve does not uniformly beat specialists: coordinate descent wins on sparse lasso, L-BFGS-B on unlifted Huber, away-step Frank--Wolfe on minimum enclosing ball, celer on group lasso, and network simplex on exact transport. Relocation can reduce iterations while increasing per-step cost; on the measured LP family it never yields a wall-time win. Three favored held-out routes lose or reach parity in cold head-to-head comparisons (Table~\ref{tab:specialists}); setup and noisy cost calibration can mislead the router. First-visit exploration is substantially slower than the completed-field oracle even though repeat visits are faster (Section~\ref{sec:exp:llm}).
+
+The convergence theorem covers exact updates in the stated convex scheme-and-relaxation grammar, with an admissible formulation, nonempty saddle set, valid norm bound, and exact atoms. It does not certify synthesized projections or floating-point kernels: finite contract tests screen implementations, while original-problem acceptance checks returned points. Search is restricted to implemented schemes and reformulations. Finally, gains depend on workload, hardware, and accounting; large cold wins on generated families do not establish comparable gains for every problem class or one-off solve.

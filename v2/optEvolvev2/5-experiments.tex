@@ -1,0 +1,137 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Exploratory hardware evaluation}
+\label{sec:setup}
+
+The current measurements are development diagnostics. They do not constitute
+the frozen final evaluation or establish search efficiency. TV denoising uses
+$\lambda=0.1$ and three training plus three held-out $128\times128$ OCT
+patches from the Kermany dataset's test split \citep{Kermany2018Identifying}.
+Here held-out means excluded from recipe selection in that diagnostic.
+Timing repetitions are not independent images, and no clinical denoising
+efficacy claim follows from reaching an optimization tolerance.
+
+The LP joint diagnostic uses two training and two held-out instances from the
+previously frozen calibration partition, chosen for earlier solvability. The
+instances are comp07-2idx and neos-1171737 for selection, with neos-1171448 and
+neos-4300652-rahue excluded from selection. They are not a representative LP
+sample. The original final LP holdout is untouched. Every measurement has three
+warm repeats, a 20{,}000-iteration cap, and an independent original-coordinate
+numerical check. The reports record preparation and cold-call costs separately.
+
+\subsection{Execution-policy results}
+\label{sec:results}
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{llrlr}
+\toprule
+cell/device & tolerance & solves & selected policy & legacy/selected \\
+\midrule
+TV / CPU & $10^{-4}$ & 3/3 & float32, $K=50$ & $4.60\times$ \\
+TV / CPU & $10^{-6}$ & 3/3 & float64, $K=200$ & $2.91\times$ \\
+TV / RTX 4090 & $10^{-4}$ & 3/3 & schedule, $K=200$ & $5.20\times$ \\
+TV / RTX 4090 & $10^{-6}$ & 3/3 & schedule, $K=200$ & $4.55\times$ \\
+TV / RTX 5090 & $10^{-4}$ & 3/3 & schedule, $K=200$ & $4.37\times$ \\
+TV / RTX 5090 & $10^{-6}$ & 3/3 & schedule, $K=200$ & $4.03\times$ \\
+LP / RTX 4090 & $10^{-6}$ & 2/2 & XLA float64, $K=50$ & $2.25\times$ \\
+LP / RTX 5090 & $10^{-6}$ & 2/2 & XLA float64, $K=50$ & $2.31\times$ \\
+\bottomrule
+\end{tabular}
+\caption{Training-selected execution policies evaluated on small diagnostic
+holdouts. Ratios compare the same mathematical solver with legacy execution
+and the selected policy. They do not measure an advantage over competent
+cadence/precision tuning or attribute a gain to LLM proposals.}
+\label{tab:tv-results}
+\end{table}
+
+The TV algorithm is the previously banked Condat--V\~u policy
+$(\tau,\sigma,\rho)=(0.05,1.0,1.9)$. Both GPUs select the same execution
+policy; this gives no evidence of GPU-to-GPU specialization. The CPU-selected
+recipe is slower on the GPUs in this diagnostic, but the reverse transfer is
+not uniformly worse. Pure float32 loses some solves at $10^{-6}$; float64
+refinement can restore the declared tolerance. Lower precision is consequently
+an accuracy-dependent choice, not an unconditional speedup.
+
+\subsection{Joint selection and kernel controls}
+
+The LP catalog crosses two frozen parameter/relaxation configurations with
+legacy execution, XLA cadence choices and three generated CUDA specializations.
+Joint selection, algorithm-then-implementation, the reverse order and
+implementation-only selection all choose frozen B0 with XLA float64 at $K=50$.
+There is no demonstrated joint-selection advantage in this catalog. B0 uses
+$(\tau,\sigma)=(1.98,0.495)$ with the frozen Ruiz/diagonal-preconditioning
+configuration; it is not the full adaptive PDLP solver.
+
+The thread-per-row CUDA variant at $K=50$ is about 25 percent slower than XLA
+on the two held-out LP instances on the RTX 4090, and about 50 percent slower
+on the RTX 5090. Warp variants also lose. On a separately traced trento1
+diagnostic, XLA emits seven kernels per iteration while the generated thread
+variant emits three, including loop bookkeeping. The serial dual-row update
+dominates the generated variant. Fewer launches therefore do not establish
+an end-to-end improvement. A cadence of 200 loses one of the two LP solves
+under the iteration cap, illustrating the interaction between checking
+frequency and detection of a transient threshold crossing.
+
+\subsection{Search and verification evidence}
+
+A corrected proposer pilot has two seeds and eight fresh evaluations per arm
+on CPU, comparing independent random search, typed population mutation, and
+LLM proposals with absent, identity-only or measured hardware context. It does
+not establish an LLM or hardware-context benefit, and frequent fallbacks limit
+interpretation. The earlier generation-4 versus generation-6 comparison used
+coupled random streams and is excluded from sample-efficiency claims.
+
+Historical verification auditing reports 285 successful numerical checks over
+2{,}002 held-out evaluation rows; the remaining rows are logged gate rejections
+or iteration-cap non-solves. These are repeated evaluations, not 2{,}002
+independent instances. The OOD gate stress test rejects 1{,}340 configurations
+under the supplied sufficient conditions; it does not establish algorithmic
+non-transfer or divergence. A paired one-model repair experiment reports
+52 percent success without feedback, 42 percent with generic feedback and
+36 percent with exact-condition feedback within two retries. This is a scoped
+negative observation, not a general limitation of LLM self-repair.
+
+\subsection{Development factorial against a stronger baseline}
+
+We cross two mathematically distinct TV updates, PDHG and Condat--V\~u, with
+two parameter settings, three precision policies and three check cadences
+($K=16,64,256$), yielding 36 recipes. A numerical map comparison confirms that
+scheme labels correspond to different updates. The baseline is the banked
+Condat--V\~u solver with compiled float64 execution and $K=64$. This improves
+on the legacy denominator but does not replace full automatic configuration.
+Twelve $256\times256$ OCT images from the dataset's training split provide six
+selection and six development-validation images. A filename-derived audit
+finds twelve distinct patient groups and no overlap between folds. The first
+runner omitted those identifiers; the audit is recorded as a correction, and
+the revised runner checks groups before timing. All three device runs use
+identical input hashes and captured numerical source. We make no cross-device
+throughput claim from these workstation diagnostics.
+
+\input{generated/development_interaction}
+
+At $10^{-4}$, implementation selection reduces validation SGM-1 from 13.41
+to 9.11\,ms on the RTX 4090 ($1.47\times$) and from 14.66 to 9.33\,ms on
+the RTX 5090 ($1.57\times$), with all six images solved. Both choose the
+banked Condat--V\~u solver with float32-to-float64 refinement and $K=256$;
+CPU selection retains the baseline. Joint selection matches
+implementation-then-algorithm selection on both GPUs. Algorithm-first
+selection is about three percent slower on the RTX 4090 and ties on the
+RTX 5090. The data therefore do not establish a benefit over both sequential
+orders.
+
+At $10^{-6}$, all selected recipes solve five of six validation images under
+the 5,000-iteration cap. The fixed 120-second failure penalty dominates
+the reported scores; these are not mean successful-solve times. The RTX 5090
+joint choice differs from the sequential choices but improves their validation
+penalized score by only about 0.75 percent, following a very small training
+score difference. This single diagnostic does not establish a robust joint
+advantage. Pure float32 Condat--V\~u solves none of the six at this tolerance.
+Native TV kernels are absent from this catalog.
+
+The main submission comparison still requires matched-budget search arms,
+larger independent validation sets, a measured hardware cost explanation and
+a frozen final evaluation. These catalog selections are not independent
+evolutionary runs. A second mathematical problem family remains necessary
+for the intended breadth of claims.

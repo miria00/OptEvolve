@@ -1,0 +1,45 @@
+\section{Introduction}
+
+The cost of solving a convex optimization problem depends on both its
+mathematical iteration and its implementation. A method requiring fewer
+iterations can have a more expensive update; lower precision can reduce
+arithmetic cost while limiting attainable accuracy; and evaluating a stopping
+criterion can consume a substantial part of execution time. Practical solvers
+therefore combine algorithmic choices with preprocessing, scheduling and
+implementation decisions \citep{Applegate2021Practical,Stellato2020OSQP}.
+For repeated solves from a problem distribution on a fixed device, the
+relevant objective is time to a solution meeting the declared numerical
+criterion, together with the cost of finding and preparing the solver.
+
+\textbf{OptEvolve} represents this decision as search over executable solver
+recipes. A recipe specifies a base operator splitting, parameters and supported
+wrappers, together with precision, certificate cadence and an eligible kernel
+implementation. A construction gate checks sufficient convergence conditions
+before the numerical iteration is executed. The compiler assembles the
+iteration from implemented atoms. Numerical termination is checked separately
+on the original problem, including when the iteration uses lower precision
+or a rescaled problem.
+
+LLM proposals, evolutionary populations and execution feedback have substantial
+prior art \citep{RomeraParedes2023Mathematical,Ye2024ReEvo,Agrawal2025GEPA}.
+Automated optimization research also includes numerical method design,
+symbolic proof discovery and formal verification \citep{Kim2026AutoOPT}.
+Our question concerns their use within a restricted executable recipe space:
+does hardware-aware selection improve time to a checked solution after strong
+algorithm and implementation tuning, and when must these choices be made
+jointly? We treat an advantage of joint search or LLM guidance as an empirical
+question, not a consequence of including those components.
+
+\paragraph{Scope and contributions.}
+The current system provides a typed representation of implemented splitting
+methods with a construction theorem for base schemes and relaxation
+(Section~\ref{sec:theory}); a hardware-aware execution layer with numerical
+admission and original-problem checks (Section~\ref{sec:hardware}); and a
+versioned evaluation protocol that separates construction admission, successful
+termination, search cost and execution cost. Preliminary TV and LP experiments
+identify measurable execution-policy gains over legacy execution, failures of
+pure float32 at tight tolerance, and a finite LP catalog in which joint and
+sequential selection coincide (Section~\ref{sec:experiments}). These diagnostics
+motivate controlled comparisons against stronger tuned baselines. They do not
+yet demonstrate a new optimization algorithm, an advantage from generated
+kernels, or better search efficiency from an LLM.

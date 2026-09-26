@@ -1,0 +1,97 @@
+{
+ "plain_pdhg": {
+  "hash": "a087257e310cc4e77da57b7ea62837563df61b9d624010f0f134cc0463b019b8",
+  "dict": {
+   "scheme": "pdhg",
+   "params": {
+    "tau": 0.3,
+    "sigma": 0.5,
+    "alpha": null,
+    "rho": null
+   },
+   "wrapper": {
+    "halpern": false,
+    "restart": "none",
+    "restart_k": null
+   },
+   "mix": null,
+   "backend": null,
+   "metric": null
+  }
+ },
+ "halpern_restart": {
+  "hash": "d114d5ab4be1567fbe7e8cc4ccc5c6a21b9c15fbe886bb437476dc9f7d7e4600",
+  "dict": {
+   "scheme": "condat_vu",
+   "params": {
+    "tau": 0.1,
+    "sigma": 0.2,
+    "alpha": null,
+    "rho": 1.5
+   },
+   "wrapper": {
+    "halpern": true,
+    "restart": "fixed_k",
+    "restart_k": 100
+   },
+   "mix": null,
+   "backend": null,
+   "metric": null
+  }
+ },
+ "metric_backend": {
+  "hash": "187a4ce0627fbe7c527ea673a3deb5f15a9b4ad6a4d851f9b2aa6dd00ef5d277",
+  "dict": {
+   "scheme": "pdhg",
+   "params": {
+    "tau": 0.3,
+    "sigma": 0.5,
+    "alpha": null,
+    "rho": null
+   },
+   "wrapper": {
+    "halpern": false,
+    "restart": "none",
+    "restart_k": null
+   },
+   "mix": null,
+   "backend": {
+    "precision": "f64",
+    "K": 64,
+    "theta": null,
+    "batch": false
+   },
+   "metric": {
+    "kind": "ruiz",
+    "iters": 10,
+    "alpha": null
+   }
+  }
+ },
+ "device": {
+  "hash": "05316777ad011a3b90785162fe227aad73cc56a9b9d383aa369a6860ba6337e0",
+  "dict": {
+   "scheme": "pdhg",
+   "params": {
+    "tau": 0.3,
+    "sigma": 0.5,
+    "alpha": null,
+    "rho": null
+   },
+   "wrapper": {
+    "halpern": false,
+    "restart": "none",
+    "restart_k": null
+   },
+   "mix": null,
+   "backend": {
+    "precision": "f64",
+    "K": 64,
+    "theta": null,
+    "batch": false,
+    "device": "cpu"
+   },
+   "metric": null
+  }
+ }
+}

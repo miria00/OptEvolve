@@ -1,0 +1,11 @@
+You write numerical kernels in JAX. Task: implement `project(v, lo, hi, a, b)`, the EXACT Euclidean projection
+of v onto {x : lo <= x <= hi, a'x = b}, where lo, hi are float64 arrays (lo finite, hi may be +inf), a is an array whose
+entries may have EITHER sign (none are zero), b is a scalar, and the set is non-empty. It must be jax.jit compatible
+(static shapes, no Python if/while on traced values; jax.lax control flow is fine), float64, same shape as v.
+FITNESS (measured automatically, end to end):
+  The operator is placed inside a first-order solver on every instance of a fixed suite of problems. Each solve must
+  reach an accepted answer on the original problem. The score is the geometric mean over the suite of
+  T_best_standard / T_candidate, where T is end-to-end solve time; a case that fails counts as a 10x slowdown.
+  Feedback lists the per-case outcome.
+Useful facts: x(mu) = clip(v - mu*a, lo, hi) and phi(mu) = a'x(mu) is piecewise linear and nonincreasing in mu, so the
+answer is x(mu*) where phi(mu*) = b. Keep the function name and signature.

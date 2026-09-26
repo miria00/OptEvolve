@@ -1,0 +1,4649 @@
+000
+001
+002
+
+O PT E VOLVE : H ARDWARE -AWARE S EARCH FOR C ER TIFIED O PTIMIZATION S OLVERS
+
+003
+004
+005
+006
+
+Anonymous authors
+Paper under double-blind review
+
+007
+008
+
+A BSTRACT
+
+009
+010
+011
+
+Solving a convex problem repeatedly on ﬁxed hardware requires choosing
+both a mathematical iteration and the way it is executed. We show that
+time to a certiﬁed solution factorises as T = N (method, cadence, tolerance) ·
+t(execution, fusion, size, device), and that the certiﬁcate cadence is the only recipe
+gene appearing in both factors. The factorisation predicts that the two halves can
+be tuned separately, which is what we measure, and it names in advance the one
+axis on which that separation fails.
+We then attack each factor. For the per-iteration cost we localise a factor of two
+to a single implementation choice, an inner loop whose trip count is a traced
+rather than a static value, and we build a temporally fused CUDA kernel that
+advances several primal-dual iterations per launch from shared memory. It is admitted against a sequential reference to 4.6 × 10−15 and is 1.86× faster end to end
+on total-variation denoising.
+For the iteration count, the step-size ratio is predictable from one measured property of the problem, the ratio of the cost norm to the constraint norm. A rule
+ﬁtted on min-cost ﬂow alone, applied unchanged to optimal transport and to multicommodity ﬂow, lands within 1.13× of a per-instance oracle across 162 held-out
+instances, against 1.83× for the best single ﬁxed choice.
+We measure two GPU architectures, and we report the settings at which each
+invariance fails.
+
+012
+013
+014
+015
+016
+017
+018
+019
+020
+021
+022
+023
+024
+025
+026
+027
+028
+029
+030
+031
+
+Central thesis. For a certiﬁed ﬁrst-order convex solver, time to a checked solution factorises
+as
+
+032
+033
+
+T = N (method, cadence, tolerance) × t(execution structure, fusion, size, device),
+|
+{z
+}
+{z
+}
+|
+
+034
+035
+
+iterations
+
+036
+
+cost per iteration
+
+and the certiﬁcate cadence is the only recipe gene that appears in both factors. The two halves
+can therefore be searched separately, which is why joint search does not beat staged search,
+and the one axis where that separation fails is the one the factorisation names in advance. We
+measure each factor, identify the mechanism behind the execution term, build a fused kernel
+that attacks it, and show that the method term is predictable from a single measured property
+of the problem.
+
+037
+038
+039
+040
+041
+042
+043
+044
+045
+046
+047
+048
+049
+050
+051
+052
+053
+
+1
+
+I NTRODUCTION
+
+Two axes are routinely conﬂated in work on fast ﬁrst-order solvers, and we separate them before
+anything else. Arithmetic width is the ﬂoating-point format in which iterates are stored and updated,
+ﬂoat32 or ﬂoat64. Termination tolerance is the threshold a certiﬁcate must meet before a solve is
+declared ﬁnished, here a relative duality gap of 10−4 or 10−6 . On total-variation denoising of retinal
+OCT scans at n = 256, ﬂoat32 iterates with a ﬂoat64 certiﬁcate reach mean iteration counts of 584.0,
+597.3 and 682.7 at certiﬁcate cadences K = 16, 64 and 256, certifying 6 of 6. The per-instance
+counts are identical to ﬂoat64 at K = 64 and K = 256 under both schemes and at K = 16 under
+Condat-Vu; under PDHG at K = 16 ﬂoat32 gives 584.0 against 578.7 in ﬂoat64. At 10−6 the same
+conﬁguration stops certifying: Condat-Vu solves 0 of 6 and PDHG 1 of 6, against 5 of 6 for ﬂoat64
+at every cadence. Width left the trajectory unchanged in most measured cells and moved it by at
+1
+
+054
+055
+056
+057
+058
+059
+060
+061
+
+most 1.9% in the rest: the per-instance counts are identical at n = 256 for K = 64 and K = 256,
+while PDHG at K = 16 moves 578.7 to 584.0, and on the second architecture at K = 64 the mean
+moves from 576.0 to 586.7 at n = 128 and from 1066.7 to 1077.3 at n = 496. What width changed
+is the reachable tolerance. Work that labels loose tolerances as low precision lets one phrase carry
+both meanings, so we never let the two share a word.
+That separation is the ﬁrst case of a general one. We measure that wall-clock time to a certiﬁed
+solution factorises as
+T = N (method, cadence, tolerance) × t(hardware, execution, fusion, size),
+
+062
+063
+064
+065
+066
+067
+068
+069
+070
+071
+072
+073
+074
+075
+076
+077
+
+(1)
+
+with N the iteration count and t the cost per iteration. Neither factor is assumed. The ﬂoat64 perinstance counts behind the triple above are exactly equal on a second GPU architecture at n = 256
+at all three cadences, giving the same 584.0, 597.3 and 682.7 under Condat-Vu; the ﬂoat32 arm
+was run on that architecture only at K = 64, where it also gives 597.3. On grid-topology min-cost
+ﬂow all 24 static-versus-traced loop pairs and all 12 cross-scheme instances have exactly equal N ,
+of which 22 pairs and 11 instances converged; the remaining instance stops at the 20000-iteration
+cap under both loop structures and both schemes. Conversely t is insensitive to scheme identity.
+Two separate three-way decompositions carry that, and they have different responses and different
+factor sets. On log penalised SGM-1 time over algorithm, precision and cadence, the algorithm term
+is 0.00% of the variance at 10−4 and 0.34% at 10−6 ; that null is measured over two levels whose
+recorded step sizes and relaxation are identical, τ = 0.05, σ = 1.0, ρ = 1.9, and whose update
+maps differ by 7.1 × 10−4 in the recorded map difference against 1.5 × 10−2 at the balanced setting,
+so it is a null over two nearly identical operators. On log per-iteration cost over execution, precision
+and cadence, cadence is the largest single term at 47.43%, over a 12-cell design one of whose cells,
+host phases at ﬂoat32, is a non-catalog diagnostic rather than a shipped-genome run. Cadence is the
+only gene appearing in both factors, so it is the sole coupling point of the two.
+
+078
+079
+
+1.1
+
+C ONTRIBUTIONS
+
+080
+081
+082
+083
+084
+085
+086
+087
+088
+089
+090
+091
+092
+093
+
+(a) The factorisation, measured, with cadence as the sole coupling point. Inside the deployed
+solver the eight end-to-end arms at each size record identical mean iteration counts of 554.7, 640.0,
+810.7 and 1024.0 from n = 128 to 496 while their run times differ by up to 2.629×, at n = 128,
+between the traced-bound baseline and the 8 × 4 tile. We also settle the mechanism of the largest
+effect on t. A traced rather than static inner-loop trip count costs 2.03× at n = 256, the geometric
+mean over the six measured cadences, spanning 1.94× to 2.13×, and 2.34× at n = 128, spanning
+2.30× to 2.37×. The penalty is per iteration and not proportional to the number of outer trips: at
+n = 256 it falls only from 12943 ns at 32 trips to 11531 ns at one, so a 32-fold reduction in outer trips
+removes 11% of it, and at n = 128 from 11972 ns to 10769 ns, removing 10%. The certiﬁcate term,
+24 differences computed from the 48 measured cells, spans −240 to +845 ns and is concentrated at
+the shortest cadences: 845 and 697 ns at K = 16 and n = 128, against −240 ns at K = 256 and
+n = 256. That is the 1/K signature of a real per-check cost, but the largest value is 7% of the traced
+penalty in the same cell, so the check cannot account for the penalty, and the penalty does not scale
+with outer trips. Neither a per-certiﬁcate-check nor a pure-unrolling explanation survives.
+
+094
+095
+096
+097
+098
+099
+100
+101
+102
+103
+104
+105
+
+(b) A temporally fused kernel, numerically admitted, whose optimum moves with size and
+device. We run T PDHG iterations per launch in shared memory with a halo of width T . Against T
+sequential reference launches the result deviates by at most 4.649×10−15 over eight fused iterations
+at ρ = 1.9; the worst case is the two T = 8 tiles at a 100 × 130 non-square size with the proximal
+term off. The archived admission run covers the RTX 4090 only. Table 1 gives the end-to-end result.
+The tile is a search dimension, not a default: the worst 4090 tile gives 0.926× at n = 384 and
+0.743× at n = 496, slower than not fusing, and on the Blackwell at n = 496 even the best tile
+reaches 0.925× of the static-loop path, so the correct decision there is not to fuse. The gain over the
+static loop is U-shaped in size. Over six raw OCT crops it falls from 1.571× at 128 px to 1.240× at
+496 px, and over four montage problems it rises from 1.060× at 992 px through 1.346× at 1488 px
+to 1.410× at 1984 px. The two limbs use different instance populations, four montages against six
+crops, and the trough sits at that boundary.
+
+106
+107
+
+(c) A symbolic construction gate with a family-dependent admissible region. Admissibility is
+an exact function of θ = τ σkLk2 and not of the instance: over 2106 settings evaluated the gate
+2
+
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+
+Table 1: Time to a certiﬁed 10−4 gap over six OCT scans, K = 256, median of 3 repeats per instance
+summed over the six instances, against the shipped traced-bound baseline. Every arm certiﬁed 6 of
+6 at every size on both devices. Best tile is B × T . The Blackwell entry at n = 496 is the best tile,
+and the static loop beats it there, 1.243× against 1.149×.
+n
+128
+256
+384
+496
+RTX 4090 baseline (s)
+RTX 4090 speedup
+RTX 4090 best tile
+
+0.06647
+2.629×
+8×4
+
+0.07733
+1.867×
+24×4
+
+0.13486
+1.634×
+24×4
+
+0.22564
+1.356×
+32×4
+
+Blackwell baseline (s)
+Blackwell speedup
+Blackwell best tile
+
+0.05732
+1.732×
+8×4
+
+0.07299
+1.450×
+24×4
+
+0.13750
+1.625×
+32×4
+
+0.19964
+1.149×
+16×2
+
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+
+admits 351 of 351 at each θ ∈ {0.1, 0.3, 0.6, 0.9, 0.99} and 0 of 351 at θ = 1.02. The 351 rejected
+settings never ran, so 2106 counts settings evaluated, not solves. The region is family dependent.
+One setting is admitted on TV and certiﬁes 6 of 6, and is rejected before any iteration runs on
+every grid-topology min-cost ﬂow instance, at gate values 1.02267, 1.03040, 1.03577 and 1.03781
+for sizes 12, 16, 24 and 32, while the same setting is admitted on all nine regular-topology cells
+at gate values 0.51994 to 0.96969. On these instances the linear objective makes the smooth term
+vanish, so the Condat-Vu and PDHG conditions record the same number. For optimal transport
+the
+is the implementation’s 1.02 safety margin on the exact norm
+√ recorded operator-norm bound −14
+m + n, recovered to within 4×10
+relative at all three measured sizes, 8.160000, 11.539983 and
+14.133535 against 8, 11.313708 and 13.856406, so the admissible product contracts as 1/(m+n).
+Step sizes and relaxation together are worth 4.31× on mean iteration count at K = 256 and 4.84×
+at K = 64, and they decide feasibility at 10−6 , where the balanced setting solves 0 of 6 and the
+banked setting 5 of 6 at both cadences.
+
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+
+(d) A step-size rule read off a pre-solve quantity, ﬁtted on one family and transferred to three
+held-out sets. The scale ratio ω0 = kck/kbk varies little within a family, which is why the recipe
+looked unpredictable: over 24 min-cost-ﬂow cell-and-seed pairs at unit rescaling it spans only 6.969
+to 9.125, and over the nine optimal-transport cell-and-seed pairs only 0.446 to 0.793. Rescaling
+c 7→ αc is exactly (τ, σ) 7→ (ατ, σ/α), which ﬁxes the gate product and moves r = τ /σ by α2 , so
+it sweeps ω0 over decades without touching admissibility. Across the 1944 rows of the two original
+sweeps τ σkLk2 reproduces the requested 0.99 to within 3.3×10−16 . Since θ is a ﬁxed input to those
+sweeps, the evidence that admissibility depends on θ alone is the separate θ sweep of contribution
+(c), not this reproduction. Sweeping α over four decades on 8 cells gives 1510 converged runs and
+209 of 216 instances with a converged ratio. Table 2 is the result. A rule of the form r = C/ω0p ,
+with p = 2 and C = 0.977 ﬁtted on the min-cost ﬂow sweep alone, cuts geometric mean regret
+against a per-instance oracle from 2.168× to 1.131× pooled over 162 held-out instances it never
+saw, a gain of 1.92×. The pair (p, C) = (2.00, 0.977) is the joint argmin of geometric mean regret
+on the ﬁtted set, over p on a 0.05 grid and C on a 0.01 dex grid, and the same pair is used in every
+later section. Two of the three held-out sets are different problem families and the third is min-cost
+ﬂow at topologies not used for ﬁtting. The rule certiﬁes all 54 instances of every held-out set, where
+the best ﬁxed ratio for that set certiﬁes 54 of 54 for optimal transport, 48 for multi-commodity ﬂow
+and 44 for the new topologies.
+The exponent is not identiﬁed more ﬁnely than a bracket. Two independent estimators approach
+each other from opposite directions as censoring by the ratio grid falls, and they have not met. The
+log-log slope of the argmin ratio on ω0 moves from −0.94 on the original four-decade grid, where
+102 of 209 optima sit on an edge of the grid, 43.5% on the ﬂoor and 5.3% on the ceiling, to −1.54
+on a six-decade grid with 33 of 108 on an edge, −1.58 on a seven-decade eight-seed grid with 46 of
+144, −1.68 on a ﬁner 19-point grid with 15 of 80, and −1.74 on a ten-decade grid with 14 of 88. The
+regret-minimising exponent barely moves: 2.10, 2.00, 1.90, 2.00 and 2.00 on those same ﬁve grids.
+On the ten-decade grid, the least censored, geometric mean regret against a per-instance oracle is
+1.070× at p = 1.8 and 1.062× at p = 2.0. The two estimators bracket the exponent between about
+1.7 and 2.1. That is consistent with the value 2 implied by PDLP’s primal-weight heuristic, and at its
+3
+
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+
+Table 2: Geometric mean iteration-count regret against a per-instance oracle, under the single protocol used in every table of this paper that reports these numbers. An instance is one cell, seed and
+rescaling α; the oracle is the minimum certiﬁed N over that instance’s own ratio grid; a run that
+fails to certify inside the 60000-iteration cap is charged 60000 iterations, so every policy is scored
+on every instance of the set. The best ﬁxed ratio is the single grid ratio minimising geometric mean
+regret on the evaluation set itself, chosen separately for each set, which favours the baseline. The
+rule is r = 0.977/ω02 snapped to the nearest grid ratio in log, ﬁtted on the ﬁrst row only. The pooled
+row is the geometric mean over the 162 held-out instances, each family carrying its own best ﬁxed
+ratio. Certiﬁed counts are the instances each policy solved inside the cap, out of the instance count.
+evaluation set
+instances
+ω0 range best ﬁxed r
+rule rule worst
+min-cost ﬂow, ﬁtted on
+optimal transport
+multi-commodity ﬂow
+min-cost ﬂow, new topologies
+
+108
+54
+54
+54
+
+0.070 to 825
+0.0054 to 79.3
+0.023 to 312
+0.074 to 806
+
+2.779×
+1.428×
+2.840×
+2.514×
+
+1.186×
+1.179×
+1.032×
+1.190×
+
+2.125×
+1.562×
+1.262×
+1.825×
+
+2.34×
+1.21×
+2.75×
+2.11×
+
+pooled held out
+
+162
+
+0.0054 to 806
+
+2.168×
+
+1.131×
+
+1.825×
+
+1.92×
+
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+
+lower end below it; our grid resolution does not separate the two, and we do not claim the exponent
+is exactly 2.
+Cheap a-priori predictors fail on the same task. A rooﬂine model picks the best fusion tile 1 of
+7 times, whether or not a ﬁtted per-launch cost of 10−5 s is added, while mean Spearman rises
+from 0.355 for the plain model to 0.567 with that cost. The pick rate does not order with the
+correlation. Empirical sharpness pools to a log-log correlation of +0.943 against iteration count
+over 17 converged instances, but that is Simpson’s paradox: −0.539 over the 13 min-cost ﬂow
+instances, −0.842 over the six regular topology instances and −0.120 over the seven grid topology
+instances. The one family where the sign does not invert is TV, at +0.983 over four instances.
+
+190
+191
+192
+
+1.2
+
+W HAT THIS PAPER DOES NOT SHOW
+
+193
+194
+195
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207
+
+We show no advantage for language-model-guided search. The arms were not independent: 336
+of 336 fallback-sourced candidates in the model-guided arm are byte-identical to candidates of the
+matched random run, and budgets were unequal at 76 to 136 fresh solver evaluations against 160
+per random run. We show no advantage for joint search over sequential per-axis search: backendonly, sequential, reverse-sequential and joint selection all land on one conﬁguration. That catalog
+diagnostic ran on the RTX 4090 and the RTX 5090, at 0.392627 and 0.379070 penalised holdout
+seconds, and the 5090 appears nowhere else in this paper. Equation 1 explains that null instead of
+hiding it: when one factor is set by cadence and the other by execution, per-axis search recovers
+the joint optimum. Every other result in this paper is measured on two GPU architectures, the
+RTX 4090 (sm_89) and the RTX PRO 6000 Blackwell Max-Q (sm_120), and we claim nothing
+about accelerator portability in general. Machines were not exclusive during timing. The process-toprocess spread of a re-measured ﬂoat64 reference cell is 0.66% over 12 processes, spanning 20.297
+to 20.432 microseconds per iteration; that ﬁgure does not bound the fusion timings, which move by
+4 to 8% between a median-of-3 and a median-of-9 protocol. The frozen ﬁnal holdout has never been
+evaluated.
+
+208
+209
+210
+211
+
+2
+
+R ELATED WORK
+
+212
+213
+214
+215
+
+gain
+
+Two phrases here name different quantities. Arithmetic width is the ﬂoating point format the iterates
+are stored and updated in. Termination tolerance is the residual level at which a certiﬁcate is accepted.
+Work titled low precision sometimes means the second and not the ﬁrst (Kempke & Koch, 2025).
+We report the two apart throughout.
+4
+
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+
+2.1
+
+GPU FIRST- ORDER SOLVERS FOR LINEAR PROGRAMMING
+
+PDLP established restarted averaged PDHG with presolve, diagonal preconditioning, adaptive step
+sizes and a primal weight (Applegate et al., 2021). The accelerator line ports that method to GPUs:
+cuPDLP and cuPDLPx (Lu & Yang, 2025; Lu et al., 2025), MPAX as a JAX reimplementation (Lu
+et al., 2024), HPR-LP with Halpern iteration and duplicated dual kernels (Chen et al., 2024), PDOT
+for optimal transport (Lu & Yang, 2024), and cuOpt as a shipped product (NVIDIA Corporation,
+2026). Each reports wall clock for one default conﬁguration and attributes the result to the method.
+What is left open is the attribution. On total variation denoising at n = 256 with tolerance 10−4 ,
+over a train fold of six scans drawn with data seed 20260907 from a pool of twelve, Condat-Vu
+with banked steps needs a mean of 584.0, 597.3 and 682.7 iterations at cadences K = 16, 64 and
+256, and the same triple recurs under both arithmetic widths, under both execution structures and
+on a second GPU architecture, where the per-instance vectors agree element by element. The hand
+written kernel is archived only at K = 64 and K = 256, where it returns 597.3 and 682.7 like the
+XLA arm. That invariance is a scope statement and not a law. It covers two GPU architectures,
+one problem family, one size and one tolerance, and its width half already fails one size away: at
+K = 64 on the second architecture, ﬂoat32 iterates need 586.7 against 576.0 at n = 128 and 1077.3
+against 1066.7 at n = 496. The method axis moves that count through its step sizes and not its
+name: Condat-Vu and PDHG return byte-identical per-instance counts at K = 256, while balanced
+steps cost 4.3125x on iteration count and solve 0 of 6 instances at 10−6 .
+
+235
+236
+
+2.2
+
+R EDUCED ARITHMETIC WIDTH IN OPTIMISATION
+
+237
+238
+239
+240
+241
+242
+243
+244
+245
+246
+247
+248
+
+The accuracy ceiling of a reduced width is a theorem (Carson & Higham, 2018; Brisebarre et al.,
+2026), reduced-width iterates under full-precision certiﬁcation already ship in cuOpt and CuClarabel,
+and cuOSQP measured the ﬂoat32 against ﬂoat64 envelope on GPU and attributed it to memory
+boundedness (NVIDIA Corporation, 2026; Chen et al., 2026; Liang & Yang, 2026; Schubiger et al.,
+2020; Stellato et al., 2020; Goulart & Chen, 2024). We claim none of that. What is left open is
+whether width is a per-iteration speed knob at all. On one device, at one cadence, at n = 256,
+ﬂoat32 buys 1.000x per iteration inside the traced device loop and 1.569x once the loop is chunked,
+so the payoff belongs to the loop structure that the width gene happened to select. The ceiling is
+also sharper than slower convergence. At n = 256, Condat-Vu with ﬂoat32 iterates and ﬂoat64
+certiﬁcation solves 0 of 6 instances at 10−6 , and PDHG solves 1 of 6. On the 4090 that holds at
+each of the three archived cadences K = 16, 64 and 256; on the second architecture only K = 64
+is archived at this size, and it gives the same 0 of 6 and 1 of 6.
+
+249
+250
+
+2.3
+
+C ERTIFICATE CADENCE AS ESTABLISHED ENGINEERING
+
+251
+252
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263
+264
+265
+266
+267
+268
+269
+
+Checking the certiﬁcate less often is a standard implementation choice.
+OR-Tools sets
+termination_check_frequency to 64 and annotates it as extra work (Google OR-Tools
+contributors, 2026), cuPDLPx captures one check interval as a replayed CUDA graph, and HPR-LP
+keeps a second dual kernel to avoid paying for the check. The ﬁeld tunes this constant. What is left
+open is its status. An fANOVA decomposition (Hutter et al., 2014) over the twelve-cell algorithm by
+width by cadence factorial assigns 0.00% of the variance to algorithm at 10−4 and 0.34% at 10−6 ,
+against 39.44% and 60.98% for the cadence main effect and 39.73% and 35.51% for the width by
+cadence interaction. Cadence is the only gene entering both factors of the factorisation.
+2.4
+
+A LGORITHM SELECTION , PORTFOLIOS AND AUTO ML NULLS
+
+SATzilla, ASlib and the MIPLIB feature line select among solvers using instance features (Xu et al.,
+2008; Bischl et al., 2016; Gleixner et al., 2021). What is left open is whether the selected object carries variance. Scheme identity is inert to the last iteration here, so a portfolio over scheme names has
+nothing to win. The obvious replacement feature also fails: in logs, empirical sharpness correlates
+with iteration count at a pooled r = +0.943 over 17 converged instances but at −0.539 within netﬂow and −0.842 within the regular topology, a Simpson reversal and not a predictor. What replaces
+it is an exact symbolic side condition: steps that are legal on total variation give tskLk2 = 1.02267
+on netﬂow and are rejected in 24 of 48 conﬁgurations before execution. Pushak & Hoos (2022)
+report that sequential per-hyperparameter tuning ties joint tuning in AutoML. Our catalog sweep
+5
+
+270
+
+273
+
+Table 3: Position of this work against the nearest lines. The right column lists only measurements
+reported in Section 5. Every iteration count in this table is a mean over the same train fold of six
+scans, data seed 20260907, drawn from a pool of twelve.
+
+274
+
+Line of work
+
+What it establishes
+
+What is left open, and what we measure
+
+GPU ﬁrst-order LP (Applegate et al., 2021; Chen
+et al., 2024; NVIDIA
+Corporation, 2026)
+
+Wall clock for one default conﬁguration per solver
+
+Reduced width (Carson
+& Higham, 2018; Chen
+et al., 2026; Schubiger
+et al., 2020)
+Cadence tuning (Google
+OR-Tools contributors,
+2026)
+Portfolios and features
+(Xu et al., 2008; Bischl
+et al., 2016)
+AutoML nulls (Pushak &
+Hoos, 2022)
+Autotuning and temporal
+blocking (Zheng et al.,
+2020; Su & Keutzer,
+2012)
+
+Reduced-width iterates with fullprecision certiﬁcation, and an accuracy ceiling theorem
+
+At n = 256, iteration count is unchanged across the two measured devices, both widths and both execution
+structures: 584.0 / 597.3 / 682.7 at
+K = 16 / 64 / 256
+Width buys 1.000x per iteration in a
+traced loop and 1.569x in a chunked
+one, same device and cadence
+
+271
+272
+
+275
+276
+277
+278
+279
+280
+281
+282
+283
+284
+285
+286
+287
+288
+289
+290
+291
+292
+293
+
+The constant is conﬁgurable and is
+tuned per solver
+Instance
+solvers
+
+features
+
+select
+
+among
+
+Sequential tuning ties joint tuning
+Per-device schedule search, time-step
+fusion in stencils
+
+It is the only gene in both factors,
+at 39.44% and 60.98% of variance
+against 0.00% and 0.34% for algorithm
+Scheme identity is inert; an exact symbolic gate rejects 24 of 48 netﬂow conﬁgurations before execution
+The same null, at 1.0000x to 1.0305x,
+explained by which axes fail to interact
+U-shaped gain in size, 0.743x for the
+wrong tile, rooﬂine picks the best tile 1
+of 7
+
+294
+295
+296
+297
+
+reproduces that null, at 1.0000x on CPU at both tolerances and at worst 1.0305x on the 4090, and
+the factorisation explains it.
+
+298
+299
+
+2.5
+
+K ERNEL AUTOTUNING , PER - DEVICE SELECTION AND TEMPORAL BLOCKING
+
+300
+301
+302
+303
+304
+305
+306
+307
+308
+309
+310
+
+Per-device schedule search is established by Ansor, clSpMV and KernelFoundry (Zheng et al., 2020;
+Su & Keutzer, 2012; Wiedemann et al., 2026), and temporal blocking, which fuses several time steps
+into one pass over a tile, is standard in stencil computing (Wolf & Lam, 1991). Concurrent work
+revisits generated-kernel benchmarking (Zhang et al., 2026). We claim neither as new. What is left
+open is the shape of the payoff and the cost of guessing it. The wrong tile is worse than not fusing:
+at n = 496 on the 4090 the best tile gives 1.356x end to end and the worst gives 0.743x, and the
+two devices choose different tiles at n = 384 and n = 496. The gain is U-shaped in problem size,
+at 1.571x for 128 px, 1.060x at 992 px and 1.410x at 1984 px, which is launch overhead removed
+at one end and HBM trafﬁc at the other. A cheap a-priori model does not substitute for the search:
+rooﬂine with arithmetic intensity reaches mean Spearman 0.355 over seven sizes, picks the best tile
+1 time in 7, and is anti-correlated at −0.943 at 128 px.
+
+311
+312
+313
+
+3
+
+M ETHOD : RECIPES , THE GATE , AND THE EXECUTION LAYER
+
+314
+315
+316
+317
+318
+
+A recipe is the complete executable object our search evaluates: a splitting scheme, its step sizes,
+its wrappers, a precision policy, a certiﬁcate cadence, a kernel, and an execution structure. Every
+block is typed, is validated before any arithmetic runs, and is serialised with each measurement, so
+a reported time is attributable to a speciﬁc object rather than to a solver name.
+
+319
+320
+
+3.1
+
+T HE RECIPE
+
+321
+322
+323
+
+One record reads, verbatim from the results ﬁle, {scheme: condat_vu, params: {tau: 0.25, sigma: 0.25,
+wrapper: {halpern: false, restart: none, restart_k: null}, mix: null,
+backend: {precision: schedule, K: 256, theta: 0.01, batch: false}, metric: null}.
+6
+
+324
+325
+326
+327
+328
+329
+330
+331
+332
+333
+334
+335
+336
+
+Table 4: Recipe blocks and the values exercised in the recorded corpus. Validation rejects with the
+violated condition and never clamps.
+Block
+Meaning
+Recorded values
+scheme
+params
+wrapper
+precision
+K
+theta
+batch
+kernel
+execution
+
+splitting identity
+step sizes, relaxation
+anchoring and restart
+iterate arithmetic policy
+certiﬁcate cadence
+schedule switch threshold
+reserved population backend
+atom implementation
+compiled loop structure
+
+pdhg, condat_vu
+tau, sigma, alpha, rho
+halpern, restart, restart_k
+f64, f32_cert64, schedule
+integer, 1 ≤ K ≤ 10000
+ﬂoat, 0 < θ < 1, schedule only
+bool, validates and is a no-op
+jax, tv_fused128, tv_fused256, tv_recip256
+device_loop, host_precision_phases
+
+337
+338
+339
+340
+
+Table 5: The admissible step product is set by problem structure. Per cell, three instances each.
+Family Degree σmax range
+Admissible ts range
+
+341
+
+grid
+regular
+regular
+regular
+
+342
+343
+344
+
+4
+2
+3
+4
+
+3.9658 to 3.9952
+2.828421 to 2.828427
+3.4116 to 3.4138
+3.8604 to 3.8630
+
+0.060223 to 0.061114
+0.120197 to 0.120208
+0.082559 to 0.082663
+0.064435 to 0.064535
+
+345
+346
+347
+348
+349
+350
+351
+352
+353
+354
+355
+356
+357
+358
+359
+360
+361
+362
+
+Every row carries the same block structure. Table 4 gives the blocks and the values the corpus
+exercises.
+The precision enum admits three values and rejects any spelling of bf16 or f16 by name. The
+cadence gene K is the interval at which the ﬂoat64 duality gap is evaluated, and the recorded
+evaluation points are exactly the multiples of K: a solve at K = 256 that stops after 4864 iterations records gap_iters = [256, 512, . . . , 4864] and 19 checks. The schedule policy is a
+two-phase wrapper, ﬂoat32 iterates then ﬂoat64, with the switch governed by θ and its iteration
+recorded: iterate_dtypes = [ﬂoat32, ﬂoat64], switch_iter = 256, θ = 0.01.
+Execution structure is one XLA-visible difference. The device loop is jax.lax.fori_loop(k,
+end, ...) with a traced bound inside a while_loop, which XLA cannot unroll. The chunked
+structure is jax.lax.fori_loop(0, K, ...) with a static Python K, which XLA unrolls
+and fuses across iterations. In the shipped catalog the choice is not separately addressable, because
+it is dispatched from the precision gene: f64 and f32_cert64 always ran the device loop and
+schedule always ran host precision phases. Enumerating the pairs over all ﬁfteen factorial artifacts conﬁrms that no recorded cell separates them. We therefore promote execution structure to a
+gene of its own and report it explicitly.
+
+363
+364
+
+3.2
+
+T HE CONSTRUCTION GATE
+
+365
+366
+367
+368
+369
+370
+371
+372
+373
+374
+375
+376
+377
+
+The gate is an exact-arithmetic side condition on the step sizes, checked symbolically before execution. A rejected conﬁguration carries the violated condition and no timing at all. PDHG rejects with
+side condition violated: t>0, s>0, t*s*||L||^2 < 1 (t*s*||L||^2=1.02267)
+and Condat-Vu with side condition violated: t*L_f/2 + t*s*||L||^2 < 1 (lhs=1.02267).
+On a linear cost the Lipschitz term vanishes and the two left-hand sides coincide at every size,
+taking 1.02267, 1.03040, 1.03577 and 1.03781 at grid sizes 12, 16, 24 and 32.
+The gate consumes a norm bound, not the norm. The ratio of norm_bound_gate to σmax is
+1.0200000, 1.0199999, 1.0199124 and 1.0199594 at grid sizes 12, 16, 24 and 32, and over all thirteen
+cells it runs from 1.0191856 to 1.0200000. The admissible step product equals the reciprocal of
+the squared bound exactly in double precision in every cell. The admissible region is a measured
+function of family and degree and is close to size-invariant within a family (Table 5).
+Family dependence is a difference in kind. The balanced preset (τ, σ, ρ) = (0.25, 0.25, 1.5) is
+inadmissible on netﬂow, rejected in 24 of 48 conﬁgurations, while the same preset is legal on total7
+
+378
+379
+380
+381
+382
+383
+384
+385
+386
+
+variation denoising and merely slow there, costing 4.3125 times the iteration count of the banked
+preset (0.05, 1.0, 1.9).
+Reparameterising (τ, σ) as a saturation level θ = tskLk2 and a ratio r = τ /σ makes the gate a
+function of θ alone. Across all 2673 rows of the three sweeps, every one requested at θ = 0.99,
+the recomputed product agrees with 0.99 to within 3.4 × 10−16 and is exact in 882 rows, and the
+recomputed ratio agrees with r to within 2.4×10−16 and is exact in 1575 rows. On optimal transport
+the bound needs no power iteration: the recorded norm is√8.160000, 11.539983 and 14.133535 at
+the 32 × 32, 64 × 64 and 96 × 96 cells, which are 1.02 m + n to full double precision, so that
+family’s admissible region shrinks as the instance grows.
+
+387
+388
+389
+390
+391
+392
+393
+394
+395
+396
+
+3.3
+
+T HREE ASSURANCE LEVELS
+
+The backend contract already states that construction assumptions, implementation tests and runtime
+numerical checks are separate obligations, and that changing dtype changes numerical errors so
+exact-arithmetic convergence guarantees do not transfer verbatim to mixed precision. We keep the
+three separate and never let one stand in for another.
+Level 1, construction. The side condition is checked in exact arithmetic before execution and
+recorded per run as construction_satisfied; on netﬂow, 24 rows are gate verdicts with no
+measurement attached.
+
+397
+398
+399
+400
+401
+402
+
+Level 2, implementation admission. A compiled update must reproduce a ﬂoat64 reference before
+use. Every kernel variant passes ﬁve per-atom checks against ﬂoat64 numpy references at its declared tolerance before entering any phenotype, the generated LP CSR templates additionally pass
+an eight-trial registry check and then per-instance reference-map admission, and non-ﬁnite outputs
+fail admission. This level is empirical: numerical admission and reference-trajectory agreement are
+not formal ﬂoating-point proofs, and the reciprocal kernel variant deliberately changes rounding.
+
+403
+404
+405
+406
+407
+408
+
+Level 3, runtime certiﬁcation. The duality gap is evaluated in ﬂoat64 in original coordinates and termination is decided by that value alone. The certiﬁcate dtype is ﬂoat64 in all
+2016 recorded per-instance train runs across the ﬁfteen factorial artifacts, and the proﬁled operator set names original_forward and original_adjoint beside base_step_f64,
+base_step_f32 and certificate_f64. Enforcement is mechanical: the certiﬁed gap raises
+on any non-ﬂoat64 certiﬁcate value, and the policy constructor refuses bf16 and f16 by name.
+
+409
+410
+411
+412
+413
+414
+415
+416
+417
+418
+419
+420
+421
+422
+423
+424
+425
+426
+427
+428
+429
+430
+431
+
+3.4
+
+T HE TEMPORAL FUSION KERNEL
+
+The execution layer contains one construction no catalog gene expresses. The fused kernel runs T
+iterations per launch with the tile resident in shared memory. For an output tile of edge B it loads
+a shared tile of edge S = B + 2T , a halo of width exactly T on every side. Iteration it computes
+the primal on [it + 1, S − it) and the dual and the commit on [it + 1, S − it − 1), so the valid
+region shrinks by exactly one cell per side per iteration. After the ﬁnal iteration, at it = T − 1, the
+committed region is [T, B + T ), and the write-back reads local index T + o for o ∈ [0, B). The
+interval closes exactly, with no slack and no redundant computation. Each fused iteration is three
+barrier-separated stages, a primal predict into scratch, a dual clip with an in-place relaxation, and a
+primal commit; stages two and three branch on ρ = 1 and write the unblended value, so at ρ = 1
+the blend never executes and no extra rounding accumulates.
+Shared memory holds ﬁve double arrays over the halo tile, 5(B + 2T )2 · 8 bytes, which caps the
+tile size; tiles above 48 KB request the opt-in carve-out. Table 6 gives the measured geometry. Halo
+redundancy is S 2 /B 2 and the per-iteration trafﬁc reduction is T divided by it, so the 24 × 4 tile runs
+four iterations at 1.7778 times the loads and moves 2.25 times less data per iteration.
+Fusion depth is coupled to cadence by a hard divisibility constraint: T must divide K, because the
+fused kernel replaces T iterations of the chunk runner and the chunk therefore takes K/T steps.
+Measured tiles have T ∈ {2, 3, 4} and measured cadences lie in {64, 128, 256, 512}. This is the
+point at which the fusion choice and the certiﬁcate cadence stop being independent. Portability
+across the two architectures is by forward JIT of compute_80 PTX rather than by recompilation.
+The tile is not currently expressible as a gene. The measurements below drive it from a harness, and
+the contract lists no temporal variant among the kernel values. We argue it should become one.
+8
+
+432
+433
+434
+
+Table 6: Geometry of the measured tiles. Shared use is 5(B + 2T )2 · 8 bytes; redundancy is S 2 /B 2 .
+Tile
+B T
+S Shared bytes Redundancy
+
+435
+
+8×4
+16 × 2
+16 × 4
+24 × 4
+32 × 2
+32 × 3
+32 × 4
+
+436
+437
+438
+439
+440
+441
+
+8
+16
+16
+24
+32
+32
+32
+
+4
+2
+4
+4
+2
+3
+4
+
+16
+20
+24
+32
+36
+38
+40
+
+10240
+16000
+23040
+40960
+51840
+57760
+64000
+
+4.00000
+1.56250
+2.25000
+1.77778
+1.26563
+1.41016
+1.56250
+
+442
+443
+444
+
+3.5
+
+N UMERICAL ADMISSION OF THE FUSED KERNEL
+
+445
+446
+447
+448
+449
+450
+451
+452
+453
+454
+455
+456
+457
+458
+459
+460
+461
+462
+463
+
+Admission compares one fused launch against T sequential launches of the single-step reference
+kernel tv_fused128 over a declared grid: sizes 64 × 64, 128 × 128 and 100 × 130, both the
+proximal and the gradient form, and ρ ∈ {1, 1.9}, at t = 0.05, s = 1.0, λ = 0.1 and inv = 1/(1 + t).
+The size 100 × 130 is not a multiple of B, so the partial-tile write-back guard is exercised. The
+pass criterion is that the largest absolute primal and dual deviations fall below 10−12 , with bitwise
+equality reported separately.
+The archived run scores 17 tile variants, a superset of the timed tiles of Table 6 that reaches T = 8.
+Its worst absolute deviation is 4.649 × 10−15 , at ρ = 1.9, reached on the two variants that fuse eight
+iterations, and it passes the declared 10−12 criterion on all 102 printed cases. The script prints a case
+only when it is not bitwise equal to the sequential reference, and every printed case is at ρ = 1.9, so
+at ρ = 1 the fused launch reproduced the reference bit for bit in all 102 cases of that half of the grid.
+This record is the 4090 only. No admission run on the second architecture is archived, and none is
+claimed.
+Archived data corroborates admission end to end: at every size the eight arms, two baseline execution structures and six fused tiles, return identical iteration counts on all six instances of the fusion
+harness draw, six scans at data seed 0, and at n = 128 the worst relative disagreement between
+certiﬁed gaps is 2.608 × 10−11 . The timed arms run the gradient form with the reciprocal kernel
+variant at ρ = 1.9, the branch where agreement is 4.649 × 10−15 at worst rather than bitwise.
+
+464
+465
+
+4
+
+C ONVERGENCE BY CONSTRUCTION
+
+466
+467
+468
+469
+470
+471
+472
+473
+474
+475
+476
+477
+478
+479
+480
+481
+482
+483
+484
+485
+
+For the base-and-relaxation grammar speciﬁed below, the Stage-0 gate of Section ?? establishes
+sufﬁcient exact-arithmetic convergence conditions. Deﬁnition 1 deﬁnes the mathematical certiﬁcate;
+Theorem 1 and Corollary 1 give the guarantee under correct atom implementations. Numerical
+termination and implementation admission are separate checks, not consequences of this theorem.
+Appendix A gives the supporting lemmas and proofs.
+Setup and notation. Throughout, f is convex and differentiable with an Lf -Lipschitz gradient,
+g and h are closed, proper, and convex, all spaces are ﬁnite-dimensional, and the saddle (Karush–
+Kuhn–Tucker) set of problem (??) is nonempty. The gate is supplied with a constant ℓ ≥ kLk and
+checks inequalities using ℓ. These conditions are sufﬁcient for the corresponding statements about
+L. Using the exact norm removes conservatism in that bound but does not make the convergence
+condition necessary. Let X ⋆ denote the primal solution set. For H  0, deﬁne kzk2H = hz, Hzi
+and distH (z, C) = minc∈C kz − ckH . An operator T is θ-averaged in k · kH for θ ∈ (0, 1) if
+T = (1 − θ)I + θS for some S that is nonexpansive in k · kH (Ryu & Yin, 2022, §2.3 and §2.8).
+A genome G is a term of the grammar G deﬁned below. The subscript G identiﬁes data attached to
+the genome: its iteration TG , its state z ∈ ZG , and its certiﬁcate. The state is a primal variable, a
+Douglas–Rachford auxiliary variable, or a primal–dual pair.
+Deﬁnition 1 (Construction certiﬁcate). A construction certiﬁcate for a compiled iteration TG :
+ZG → ZG is a triple (HG , θG , πG ) consisting of a metric HG  0, an averagedness constant
+θG ∈ (0, 1), and a decoder πG , such that (C1) TG is θG -averaged in k · kHG ; (C2) Fix TG 6= ∅; and
+(C3) πG (Fix TG ) ⊆ X ⋆ .
+9
+
+486
+487
+488
+489
+490
+491
+492
+
+base scheme
+
+metric HG
+
+gate inequality
+
+cG
+
+FBS
+DRS
+Davis–Yin
+PDHG
+
+I
+I
+I
+Mτ σ
+
+0 < α < 2/Lf
+α>0
+0 < α < 2/Lf
+τ σℓ2 < 1
+
+Condat–Vũ
+
+Mτ σ
+
+τ Lf /2 + τ σℓ2 < 1
+
+αLf /2
+0
+αLf /2
+0
+τ Lf
+2 (1 − τ σℓ2 )
+
+493
+494
+495
+496
+497
+498
+499
+500
+
+Table 7: The certiﬁcates the gate emits for the base schemes, with Mτ σ =
+
+h −1
+
+τ I −L⊤
+−L σ −1 I
+
+i
+
+and ℓ ≥ kLk
+
+the supplied operator-norm bound. In each row the averagedness constant is θG = 1/(2 − cG )
+and, for positive stepsizes, the gate inequality implies HG  0 and cG < 1. The forward-block
+smoothness constant belongs to the accepted decomposition, including a dual decomposition where
+applicable. These are sufﬁcient conditions. The two entries with cG = 0 are the schemes with no
+forward step, which are ﬁrmly nonexpansive in their metric. PDHG is the Lf = 0 specialization of
+Condat–Vũ.
+
+501
+502
+503
+504
+505
+506
+507
+508
+509
+510
+511
+512
+513
+514
+515
+516
+517
+518
+519
+520
+521
+
+Conditions (C1) and (C2) concern the iteration. Condition (C3) speciﬁes how a ﬁxed point is decoded as a solution. The certiﬁcate does not depend on an implementation or a numerical run, so the
+gate can verify it symbolically.
+The certiﬁed grammar. A genome is a term G of the grammar
+G:
+
+G ::= bases (p) | relaxρ (G′ ),
+
+(2)
+
+Here bases (p) selects one of the ﬁve base schemes in Table 7, s ∈ {fbs, drs, dys, pdhg, cv}, together with its stepsizes p (α or the pair (τ, σ)). The term relaxρ (G′ ) over-relaxes
+a genome G′
+
+by a weight ρ > 0. The champion of Section ?? is relax1.9 basecv (0.05, 1.0) . The mathematical
+cores in the hardware catalogs use this base-and-relaxation grammar. Rescaling, numerical implementations and wrapper extensions have additional obligations and are not automatically covered
+by this theorem. Averaged blending transports certiﬁcates under the hypotheses of Lemma 3; the
+implementation admits only restricted parents for which metric and ﬁxed-point compatibility are
+established by the construction. The broader derivation-tree transformations are outside the implemented grammar and are not claimed here.
+Theorem 1 (Gate soundness). Every genome G generated by the grammar G of (2) and accepted
+by the Stage-0 gate carries a construction certiﬁcate (HG , θG , πG ). Speciﬁcally, (i) for bases (p) the
+certiﬁcate is given in Table 7, with θG = 1/(2 − cG ), and the checked inequality implies HG  0
+and cG < 1; (ii) for relaxρ (G′ ) the gate checks ρ θG′ < 1, and the certiﬁcate is (HG′ , ρ θG′ , πG′ ).
+
+522
+523
+524
+525
+526
+527
+528
+529
+530
+531
+532
+
+Proof. The result follows by structural induction on G. The base case is Lemma 1, and the inductive
+step is Lemma 2. Each lemma uses the corresponding condition checked by the gate.
+Corollary 1 (Certiﬁed genomes converge, at a rate). Let TG carry a certiﬁcate (HG , θG , πG ). Then
+the compiled iteration
+zk+1 = TG zk
+(3)
+⋆
+⋆
+converges, from any z0 , to some z ∈ Fix TG , and πG (z ) solves problem (??). Moreover kzk+1 −
+zk kHG is nonincreasing in k and, for every k ≥ 0,
+kzk+1 − zk k2HG ≤
+
+θG
+dist2HG (z0 , Fix TG ) .
+(1 − θG ) (k + 1)
+
+(4)
+
+533
+534
+535
+
+Proof. By (C1) and (C2), Proposition 1 in Appendix A applies to TG . Condition (C3) shows that
+the limit decodes to a solution.
+
+536
+537
+538
+539
+
+The rate applies to the theoretical step residual kzk+1 − zk kHG . The numerical TV and LP stopping
+criteria in Section ?? are different quantities; the rate does not directly bound their time to tolerance.
+For a genome relaxρ (G′ ), this residual equals ρ kTG′ zk − zk kHG . Thus, dividing (4) by ρ2 bounds
+the unrelaxed ﬁxed-point residual (Remark 2). Averagedness makes this residual monotone, so the
+10
+
+540
+541
+542
+543
+544
+545
+546
+547
+548
+549
+550
+551
+552
+553
+554
+555
+556
+
+bound holds for the last iterate. The order in (4) is sharp. Krasnosel’skiı̆–Mann iterations achieve
+o(1/k) on the squared residual and, in the worst case, nothing faster (Davis & Yin, 2016; Bravo &
+Cominetti, 2018).
+Remark 1 (What the certiﬁcate buys the search). Because 1/θG = 2 − cG for every base scheme,
+the certiﬁed over-relaxation window is exactly ρ ∈ (0, 2 − cG ): the textbook interval (0, 2) for the
+schemes with no forward step, shrinking as the forward step consumes the budget. For Condat–Vũ
+this window is not a conservative surrogate. Condat (2013, Theorem 3.1) proves convergence of
+
+−1
+the same relaxed iteration for ρn ∈ 0, δ with δ = 2 − β2 τ1 − σkLk2
+, where β = Lf is
+the Lipschitz constant of the smooth gradient. Multiplying numerator and denominator by τ gives
+τ Lf
+δ = 2 − c⋆ , where c⋆ := 2(1−τ σ∥L∥
+2 ) is the forward-step constant computed with the exact operator
+norm. Since ℓ ≥ kLk, it follows that c⋆ ≤ cG and hence 2 − cG ≤ δ. The certiﬁed window therefore
+coincides with Condat’s when ℓ = kLk, and is contained in it when ℓ > kLk. The discovered
+policy of Section ?? illustrates this effect. The certiﬁed textbook default (τ, σ) = (0.5, 0.186) has
+cG ≈ 0.97 and therefore admits almost no over-relaxation at all, ρ < 1.03, whereas the evolved
+(τ, σ) = (0.05, 1.0) has cG = 0.042 and admits ρ < 1.96. Shrinking the primal step does not
+merely satisfy the gate, it widens the interval the relaxation gene may search in, and the champion
+sits near its new edge at ρ = 1.9, with ρ θ = 0.97.
+
+557
+558
+559
+560
+561
+562
+563
+564
+565
+566
+567
+568
+569
+570
+571
+572
+573
+574
+575
+
+Halpern genomes. An averaged map TG is nonexpansive. The implementation applies the canonical Halpern combination directly to this map, including a permitted relaxation, as recorded in Appendix C. Without anchor restarts, Proposition 2 applies with that map in the role of its nonexpansive
+−1
+operator. The normalized map SG = I + θG
+(TG − I) in the proposition is another theoretically admissible choice; it is not the map selected by the current runtime. The unrestarted guarantee does not
+establish the same rate or anchor projection for periodically restarted trajectories. Neither Halpern
+nor restarted Halpern is used in the current hardware factorial.
+Finite-preﬁx switching. Corollary 1 assumes exact arithmetic and correct atom implementations.
+Each returned numerical solution is also checked by the numerical stopping criterion of Section ??.
+Free-form schedules, packaged as the switchK gene of Section ??, run outside G as a ﬁnite preﬁx: an
+arbitrary map TA drives the ﬁrst K iterations, and the compiled iteration then switches permanently
+to a certiﬁed map TB , after a ﬁniteness check on the handoff state zK . Because the tail is exactly
+the certiﬁed iteration started at zK , the sequence converges to a ﬁxed point of TB and the rate (4)
+holds with z0 replaced by zK (Lemma 4, Appendix A); the preﬁx enters only through the constant
+distHG (zK , Fix TB ), never the asymptotics. This extension is not used in the experiments. All
+reported runs have K = 0.
+Every admitted genome in G therefore has the stated exact-arithmetic guarantee. Finite-budget numerical success remains a separate measurement.
+
+576
+577
+578
+
+5
+
+E XPERIMENTS
+
+579
+580
+581
+582
+583
+584
+585
+586
+587
+588
+589
+590
+591
+592
+593
+
+All measurements run on an RTX 4090 (sm_89) and an RTX PRO 6000 Blackwell Max-Q (sm_120),
+over four families: total variation denoising of six retinal OCT scans, min-cost ﬂow on grid and
+regular topologies, capacitated multi-commodity ﬂow, and optimal transport. Termination is decided
+by a ﬂoat64 relative duality gap in original coordinates at 10−4 unless stated otherwise. Every time
+is wall clock to a certiﬁed gap and every iteration count is the count at which that certiﬁcate passed.
+Iteration count is written N and per-iteration cost t, and we state which of the two any ratio is
+measured on, because the thesis of the paper is T = N × t.
+5.1
+
+P ROBLEM FAMILIES
+
+Table 8 lists the ﬁve families on which every number in this paper was measured, with the volume
+of measurement behind each. The three linear-programming families share the same standard-form
+composite and are solved by the same code path, which is what makes the transfer experiment of
+Section ?? meaningful: the solver is held ﬁxed and only the operator changes. Total variation is
+the one non-LP family and the only one to which the fused kernel of Section ?? applies, since that
+kernel is a stencil.
+11
+
+594
+595
+596
+597
+598
+599
+600
+601
+602
+603
+
+Table 8: Problem families with measurements. Rows count individual solves recorded under
+results/. Cells count distinct problem conﬁgurations.
+Family
+
+Conﬁgurations
+
+Rows
+
+Cells
+
+Min-cost ﬂow, grid
+Min-cost ﬂow, random regular
+Optimal transport
+Total-variation denoising
+Multi-commodity ﬂow
+
+k × k grid, bidirectional 4-neighbour arcs
+degrees 2, 3, 4; n = 256, 512, 1024
+bipartite, m = n ∈ {32, 64, 96}
+OCT scans, 128 to 1984 pixels
+capacity-coupled, K ∈ {2, 4}
+
+5,645
+3,929
+1,431
+1,003
+648
+
+4
+8
+3
+7 sizes
+2
+
+604
+605
+606
+607
+
+Table 9: Operator-norm behaviour across the ﬁve families, measured. The reported kLk is the gate’s
+bound, which carries a 1.02 safety factor over the spectral norm.
+
+608
+609
+610
+611
+612
+613
+614
+615
+
+Family
+
+kLk behaviour
+
+Measured
+
+Min-cost ﬂow, grid
+Min-cost ﬂow, regular
+Optimal transport
+Multi-commodity ﬂow
+Total-variation denoising
+
+saturates at 4, bounded√
+in size
+bounded
+by
+degree,
+≤
+4d
+√
+m + n, unbounded in size
+grows with K, admissible τ σ contracts
+gradient stencil, bounded
+
+4.045 to 4.076 over a 17× size increase
+2.884 at d = 2, 3.935 at d = 4
+exact to 3 × 10−14 relative
+kLk2 from 17.1 at K=1 to 150.1 at K=128
+ﬁxed by the discretisation
+
+616
+617
+618
+619
+620
+621
+622
+623
+624
+625
+626
+627
+628
+
+The families are not variations on a single operator. Table 9 gives the behaviour of kLk, which is
+the quantity the construction gate of Section ?? tests and therefore the quantity that decides which
+recipes are admissible at all. Two families have an operator norm bounded independently of problem
+size, one grows without bound in the size, and one contracts in its coupling parameter. This spread
+is the reason the admissible region is family dependent rather than a property of the solver.
+The consequence is direct. On grid instances the admissible region is effectively ﬁxed: kLk moves
+0.76 percent while the variable count grows 17×, so the same step sizes remain legal at every size.
+On optimal transport the admissible product τ σ must shrink as 1/(m + n), and both catalog stepsize settings become inadmissible at sizes far below those we solve. On multi-commodity ﬂow the
+admissible product falls from 0.0584 at K = 1 to 0.00666 at K = 128. A step-size pair is therefore
+not portable across families, and the gate detects this symbolically, before any iteration runs.
+
+629
+630
+
+5.2
+
+T HE FACTORISATION
+
+631
+632
+633
+634
+635
+636
+637
+638
+639
+640
+641
+642
+643
+644
+645
+646
+647
+
+Table 10 gives the per-instance iteration counts on TV at n = 256. The six-element vectors, not only
+their means, are identical element by element on the two architectures at every cadence and under
+both schemes.
+The same vectors appear in four separate factorial artifacts covering the ﬂoat64 device loop, the
+ﬂoat32-iterate ﬂoat64-certiﬁcate device loop, the host-phase policy and the hand written kernel in
+both execution structures. At n = 256 and K ≥ 64 iteration count is invariant to arithmetic width,
+execution structure, kernel and device, and is a function of cadence and tolerance alone. Width is
+not inert in general. On the Blackwell at K = 64 ﬂoat64 gives 576.0 against ﬂoat32’s 586.7 at
+n = 128 and 1066.7 against 1077.3 at n = 496, and on the 4090 at K = 16 ﬂoat32 moves PDHG
+from 578.7 to 584.0. Cadence quantises the width difference away at K ≥ 64 and n = 256 and not
+everywhere.
+The invariance survives into the deployed solver. Across eight arms, the traced baseline, the static
+loop and six fusion tiles, at four sizes on both devices, the per-instance vectors are identical within
+each cell and every arm certiﬁes 6 of 6, while solve time within a cell varies by up to 2.629×. The
+sweep requested seven tiles, 8 × 4, 16 × 2, 16 × 4, 24 × 4, 32 × 2, 32 × 3 and 32 × 4. The 32 × 3 tile
+never runs, because the harness requires the fused depth T to divide the cadence K and no recorded
+cadence, 64, 128, 256 or 512, is divisible by 3. Six tiles are measured everywhere in this paper.
+12
+
+648
+649
+650
+651
+652
+653
+654
+655
+
+Table 10: Per-instance iteration counts over the six OCT scans at n = 256, tolerance 10−4 . Every vector is identical on the RTX 4090 and on the Blackwell. The vectors are also identical
+across the ﬂoat64, ﬂoat32-iterate and two-phase precision policies at K = 64 and K = 256.
+At K = 16 they are not: the ﬂoat32-iterate policy moves PDHG from the ﬂoat64 vector
+[1008, 496, 608, 400, 320, 640], mean 578.7, to [1008, 512, 608, 416, 320, 640], mean 584.0, while
+Condat-Vu is unchanged at 584.0.
+Cadence
+Scheme
+Per-instance N Mean
+
+656
+
+K = 16
+K = 16
+K = 64
+K = 256
+
+657
+658
+659
+
+Condat-Vu
+PDHG
+both
+both
+
+1008, 512, 608, 416, 320, 640
+1008, 496, 608, 400, 320, 640
+1024, 512, 640, 448, 320, 640
+1024, 512, 768, 512, 512, 768
+
+584.0
+578.7
+597.3
+682.7
+
+660
+661
+662
+663
+664
+665
+666
+
+Table 11: Microseconds per iteration on the RTX 4090, TV at n = 256, Condat-Vu, averaged over
+the six scans. PDHG in the same artifacts gives 27.40, 17.20 and 14.15 at host-phase ﬂoat64 and
+26.59, 12.21 and 8.36 at host-phase ﬂoat32. The host-phase ﬂoat32 row is the patched policy registry
+and not the shipped genome, as disclosed at the end of this subsection.
+Execution
+Width
+K = 16 K = 64 K = 256
+
+667
+
+Device loop
+Device loop
+Host phases
+Host phases
+
+668
+669
+670
+
+ﬂoat64
+ﬂoat32 iterates
+ﬂoat64
+ﬂoat32 throughout
+
+22.54
+22.99
+27.18
+28.00
+
+20.39
+20.41
+16.19
+12.23
+
+19.78
+19.78
+13.29
+8.43
+
+671
+672
+673
+674
+675
+676
+677
+678
+679
+680
+681
+682
+683
+684
+685
+686
+687
+688
+689
+690
+691
+692
+693
+
+The second family agrees. All 24 banked min-cost ﬂow rows return exactly equal iteration counts
+under the static and the traced loop, and 22 of the 24 certify; the two rows at grid size 12, instance 1,
+agree only because both hit the 20000-iteration cap at a gap of 2.858 × 10−4 . Over the 22 certiﬁed
+rows the traced-over-static wall-time ratio has geometric mean 1.395 and spans 1.293 to 1.492; over
+all 24, including the two capped rows, it is 1.385 and spans 1.277 to 1.492. All 12 matched instance
+pairs return exactly equal counts under PDHG and Condat-Vu, of which 11 are certiﬁed pairs and
+one is the pair that both schemes ran to the cap.
+Per-iteration cost is invariant to scheme identity under XLA and is not under the hand
+written kernel. At f64_K256 under XLA the two schemes return the identical vector
+[1024, 512, 768, 512, 512, 768], penalised SGM-1 times in ratio 0.99494 and per-iteration costs of
+19.76 against 19.76 microseconds. In the custom-kernel artifact, with the same build_digest
+in both rows, Condat-Vu costs 19.21 microseconds per iteration and PDHG 25.02, a factor of 1.303,
+and the gap appears in all four custom-kernel cells at 1.303, 1.264, 1.179 and 1.197. Scheme identity
+is inert to t on the compiler path and not on the kernel path.
+Scheme identity is exactly inert to N at coarse cadence and not at ﬁne cadence. At K = 16 the
+schemes differ on two of the six instances, 512 against 496 and 416 against 400, and the split
+reproduces on the Blackwell. At 10−6 and K = 64 Condat-Vu averages 2860.0 iterations and
+PDHG 2870.7; both certify 5 of 6, both means include the same capped instance, and the two
+schemes differ on exactly one of the ﬁve certiﬁed instances, 2432 against 2496. A coarse cadence
+quantises a real scheme difference away, which is the mechanism this paper argues for rather than
+an exception to it.
+
+694
+695
+696
+697
+698
+699
+700
+701
+
+5.3
+
+E XECUTION STRUCTURE
+
+Table 11 decomposes per-iteration cost over execution structure, arithmetic width and cadence.
+Width buys 1.00× inside the device loop at K = 256, where the measured ratio is 1.00006 and
+the section’s own stability ﬁgure is 0.66 percent, so the third decimal is below resolution. It buys
+1.576× once the loop is chunked into host phases, with the ﬂoat32 host-phase cell taken from the
+patched policy registry rather than the shipped genome. Execution structure is worth 1.488× at
+ﬂoat64 and 2.345× at ﬂoat32 at K = 256, and reverses to 0.829× at K = 16, where chunking pays
+13
+
+702
+703
+704
+705
+
+Table 12: Traced minus static cost, nanoseconds per iteration, certiﬁcate off. The product of outer
+trips and cadence is 512 in every column. One measurement per cell, no repeats.
+Outer trips
+32
+16
+8
+4
+2
+1
+
+706
+
+n = 128 penalty
+n = 128 ratio
+n = 256 penalty
+n = 256 ratio
+
+707
+708
+709
+
+11972
+2.374
+12943
+2.091
+
+11365
+2.348
+12564
+2.126
+
+10893
+2.299
+11604
+1.989
+
+11014
+2.361
+11929
+2.060
+
+10823
+2.333
+11202
+1.938
+
+10769
+2.317
+11531
+1.997
+
+710
+711
+712
+713
+714
+715
+716
+717
+718
+719
+720
+721
+722
+723
+724
+725
+726
+727
+728
+729
+730
+731
+732
+733
+734
+735
+736
+737
+738
+739
+740
+741
+742
+743
+744
+745
+746
+747
+
+more in launches than it saves. Under PDHG the ﬂoat64 execution-structure gain at K = 256 is
+1.398× rather than 1.488×. Reporting one of these without the other misattributes the gain.
+A three-way decomposition of log per-iteration cost over those twelve cells assigns 47.43 percent
+of the variance to cadence, 25.96 percent to the execution-by-cadence interaction, 15.98 percent to
+execution structure, 3.26 percent to execution by precision, 2.90 percent to precision alone, 2.43
+percent to precision by cadence and 2.04 percent to the three-way residual. The design is saturated
+at one observation per cell, so these are shares of an exact decomposition and carry no error bar.
+Table 12 settles the cause. It holds the total iteration budget ﬁxed at 512 and moves the number of
+outer trips from 32 down to 1, with the cadence moving inversely.
+The penalty is per iteration and nearly ﬂat in the number of outer trips. It falls 10.0 percent at
+n = 128, from 11972 to 10769 ns, and 10.9 percent at n = 256, from 12943 to 11531 ns, while the
+outer count falls 32-fold, and the static per-iteration cost itself moves only 6.2 percent at n = 128,
+from 8714 to 8175 ns, across the same 32-fold change in unroll depth. A lost cross-iteration fusion
+opportunity would not be 10 percent of a 32-fold change. The ﬁle carries one measurement per cell
+with no repeats, so any residual trend is at the resolution of a single shot. Over the 24 matched
+differences the certiﬁcate term, cost with the certiﬁcate on minus cost with it off, spans −239.90
+to +844.56 ns against a loop penalty near 11000 ns, so it is not a per-certiﬁcate-check cost either,
+which is the explanation we previously advanced. The largest certiﬁcate term, +844.56 ns, falls at
+n = 128 and 32 outer trips, the ﬁnest cadence in the ﬁle, where a real certiﬁcate cost would appear,
+and is 7 percent of the loop penalty there.
+End to end the static bound alone is worth 1.673×, 1.347×, 1.291× and 1.093× at n = 128, 256,
+384 and 496 on the 4090 and 1.228×, 1.382×, 1.401× and 1.243× on the Blackwell. The 4090
+beneﬁt decays with size and the Blackwell beneﬁt does not.
+Under Condat-Vu the custom TV kernel is at parity with XLA on this device in both execution
+structures: 19.21 against 19.76 microseconds per iteration in the device loop at K = 256, an edge
+of 1.029×, and 13.27 against the schedule policy’s 12.90 in host phases, a loss of 0.972×. Under
+PDHG the same kernel loses in both, 25.02 against 19.76, a loss of 1.266×, and 15.65 against 13.71,
+a loss of 1.141×. The kernel gains 1.447× from chunked execution while XLA in the same artifact
+gains 1.532×, so both gain from chunking, the gains are not equal, and execution structure and
+kernel identity remain separate decisions.
+The best conﬁguration measured is not expressible in the shipped genome: XLA ﬂoat32 with host
+phases at K = 256 reaches 0.00576 s penalised SGM-1 against the compiled ﬂoat64 and K = 64
+baseline’s 0.01216 s, a speedup of 2.110×, where the best catalog cell reaches 0.00790 s and 1.540×.
+That cell was produced by patching the policy registry rather than by the shipped genome, so it is a
+diagnostic that motivates a schema change and not a search result.
+
+748
+749
+
+5.4
+
+T EMPORAL KERNEL FUSION
+
+750
+751
+752
+753
+754
+755
+
+The fused kernel is numerically admitted before it is timed. The archived admission run compares T
+fused iterations against T sequential single-step reference launches over 102 cases, 17 built variants
+at three problem shapes and both proximal settings, all at ρ = 1.9. The worst absolute deviation
+over all 102 cases is 4.649 × 10−15 and the run reports PASS. No case is bitwise identical at this ρ.
+The variant names in the log carry the thread count, so the two builds that share the label 16 × 4, at
+128 and at 256 threads, are admitted separately, and all six timed tiles appear in the log.
+14
+
+756
+757
+758
+759
+760
+761
+762
+763
+764
+765
+766
+767
+768
+769
+770
+771
+
+Table 13: Time to a certiﬁed 10−4 gap over six OCT scans, K = 256, relative to the shipped tracedbound baseline, three timing repeats per image. Every arm certiﬁed 6 of 6 and every arm inside a
+cell ran the identical per-instance iteration counts. The worst-tile identity at n = 256 is not stable:
+a 9-repeat re-measurement one day later puts 8 × 4 worst at 1.366 with 32 × 2 at 1.375, so that one
+cell is inside the measurement spread and the tile name is omitted.
+n
+128
+256
+384
+496
+4090 baseline (s)
+4090 best tile
+4090 best speedup
+4090 worst tile
+4090 worst speedup
+
+0.06647
+8×4
+2.629
+32 × 2
+1.320
+
+0.07733
+24 × 4
+1.867
+not resolved
+1.298
+
+0.13486
+24 × 4
+1.634
+8×4
+0.926
+
+0.22564
+32 × 4
+1.356
+8×4
+0.743
+
+Blackwell baseline (s)
+Blackwell best tile
+Blackwell best speedup
+Blackwell worst speedup
+
+0.05732
+8×4
+1.732
+0.973
+
+0.07299
+24 × 4
+1.450
+1.008
+
+0.13750
+32 × 4
+1.625
+1.100
+
+0.19964
+16 × 2
+1.149
+0.862
+
+772
+773
+774
+775
+776
+777
+778
+779
+780
+781
+
+Table 14: Fusion gain over the static loop and static-loop gain over the traced bound, by problem
+size. Sizes 992 and above are montages of several distinct scans, four images per arm rather than
+six, so the two limbs of the 4090 row use different instance construction.
+Size (px)
+128
+256
+384
+496
+992 1488 1984
+4090 fusion over static
+Blackwell fusion over static
+4090 static over traced
+Blackwell static over traced
+
+1.571
+1.410
+1.673
+1.228
+
+1.386
+1.049
+1.347
+1.382
+
+1.266
+1.160
+1.291
+1.401
+
+1.240
+0.925
+1.093
+1.243
+
+1.060
+0.989
+1.016
+1.063
+
+1.346
+1.033
+0.989
+1.060
+
+1.410
+1.123
+0.993
+1.037
+
+782
+783
+784
+785
+786
+787
+788
+789
+790
+791
+792
+793
+794
+795
+796
+797
+798
+799
+800
+801
+802
+803
+804
+805
+806
+807
+808
+809
+
+Table 13 gives the end-to-end fusion result against the shipped traced baseline, with the worst tile of
+the same sweep beside it.
+The optimal tile moves with size and with device: the two devices agree at n = 128 and n = 256
+and disagree at n = 384 and n = 496. Tile selection is not optional. The wrong tile is slower than
+not fusing at all at the two larger sizes on the 4090, and the best-to-worst swing is 1.99× at n = 128
+and 1.82× at n = 496. The identity of the worst tile is 8 × 4 at both large sizes and is not resolved
+at n = 256, where three repeats and nine repeats disagree about which of 8 × 4 and 32 × 2 is worst
+and the two differ by 0.7 percent under the nine-repeat run.
+There is a cell where the correct decision is not to fuse. On the Blackwell at n = 496 the best
+tile reaches only 0.925× of the plain static-loop path and the worst reaches 0.862× of the baseline,
+which belongs in the same paragraph as the 1.149× headline for that cell.
+Table 14 sweeps size to 1984 pixels. The fusion gain over the static loop is U-shaped on the 4090:
+it falls monotonically from 1.571× at 128 pixels to a minimum of 1.060× at 992 pixels and rises
+to 1.410× at 1984 pixels. The Blackwell row is not monotone on either limb, running 1.410, 1.049,
+1.160, 0.925, 0.989, 1.033 and 1.123, and its minimum sits at 496 pixels. The 4090 trough is a
+single point and it sits exactly at the boundary between the six-crop protocol and the four-montage
+protocol, so we read the shape and not the location. Launch-overhead removal accounts for the small
+end and reduced memory trafﬁc for the large end.
+The static bound decays monotonically on the 4090 and reverses past about 1000 pixels, to 0.989×
+at 1488 and 0.993× at 1984, while on the Blackwell it does not reverse in this range. At the two
+largest 4090 sizes the best recipe is the traced bound plus fusion rather than the static bound plus
+fusion, so the two execution decisions are not separable at every scale.
+Across cadence the argmax is stable and its value is not. At n = 256 on the 4090 the fusion gain
+over the static loop is 1.258×, 1.265×, 1.336× and 1.394× at K = 64, 128, 256 and 512, and
+the best tile is 24 × 4 at three of four cadences, losing at K = 128 to 16 × 4 by 0.6 percent. The
+Blackwell selects 24 × 4 at all four with gains 1.006×, 1.024×, 1.053× and 1.062×. Iteration count
+15
+
+810
+811
+
+is not constant across this sweep, at 3712, 3840, 3840 and 4608 total over the six images, so only the
+gain-over-static-loop column is a clean per-iteration comparison and we report only that column.
+
+812
+813
+814
+815
+816
+817
+818
+819
+820
+821
+822
+823
+824
+825
+826
+827
+828
+829
+830
+831
+832
+833
+834
+835
+836
+837
+838
+839
+840
+841
+842
+843
+844
+845
+846
+847
+848
+849
+
+5.5
+
+T HE METHOD AXIS AND THE CONSTRUCTION GATE
+
+Scheme identity is inert on the method axis and step sizes are decisive. At n = 256 under
+f64_K256 and tolerance 10−4 the banked setting (τ, σ, ρ) = (0.05, 1.0, 1.9) gives mean 682.7
+iterations under both schemes and the balanced setting (0.25, 0.25, 1.5) gives 2944.0 under both, a
+ratio of 4.3125 on iteration count under both schemes, and on penalised SGM-1 time 4.1430 under
+Condat-Vu and 4.1964 under PDHG. At 10−6 the difference becomes feasibility: banked certiﬁes
+5 of 6 at mean 2966.7 iterations and balanced certiﬁes 0 of 6, every instance running to the 5000iteration cap, though balanced does certify 6 of 6 at 10−4 .
+The admissible region is family dependent, and the difference is one of kind. The same balanced
+parameters that are merely slow on TV are rejected before any arithmetic runs on every min-cost
+ﬂow instance: all 24 balanced netﬂow rows fail with gate left-hand side 1.02267, 1.0304, 1.03577
+and 1.03781 at grid sizes 12, 16, 24 and 32 against a threshold of 1, and all 24 banked rows run.
+The Condat-Vu rows record tLf /2 + tskLk2 and the PDHG rows record tskLk2 ; the two coincide
+here because the min-cost ﬂow objective has no smooth term. The structure probe reproduces those
+four values at t = s = 0.25 as 1.0226746, 1.0304043, 1.0357716 and 1.0378125, against 0.51994
+to 0.52005 across the three degree-2 regular cells, which are admitted.
+Admission is a function of the gate product alone: over 2106 runs the gate admits 351 of 351
+settings at each of θ ∈ {0.1, 0.3, 0.6, 0.9, 0.99} and 0 of 351 at θ = 1.02, admitting 1755 runs in
+total, rejecting 351, capping 257 at the iteration limit and consuming 987.8 GPU seconds. Rejected
+settings were never executed, so the gate is veriﬁed as sufﬁcient for non-divergence and never as
+necessary, and 257 of the admitted runs still failed to certify inside the cap.
+How the region scales with instance size is also a property of the family. Min-cost ﬂow norm bounds
+are bounded in size, at 4.0451 to 4.0749 on the grid over sizes 12 to 32 and, on the regular topology
+across 512, 1024 and 2048 nodes, 2.8843 to 2.8844 at degree 2, 3.4781 to 3.4803 at degree 3 and
+3.9364 to 3.9395 at degree 4. Optimal transport is the opposite case, and measurement conﬁrms
+its closed form: the recorded norm bound
+√ is 8.160000, 11.539983 and 14.133535 at the 32 × 32,
+64 × 64 and 96 × 96 cells, which is 1.02 m + n to a relative error of 1.1 × 10−14 to 3.2 × 10−14 ,
+fourteen signiﬁcant ﬁgures rather than bitwise agreement, the 1.02 being the safety inﬂation and
+the residual being power-iteration accuracy. The admissible product is 0.0150183, 0.0075091 and
+0.0050061, in ratios 2.000 and 1.500 that match m + n = 64, 128 and 192 exactly, so that region
+shrinks as 1/(m+n).
+The corpus now contains capacitated multi-commodity ﬂow runs, at two commodity counts on one
+topology. Doubling the commodity count from 2 to 4 on the 16 × 16 grid moves the norm bound
+from 4.323183 to 4.567979 and shrinks the admissible product by a factor of 1.117, not by a factor
+of 2. Two points do not identify a rate, so we make no asymptotic claim about how that family’s
+admissible region contracts in the number of commodities.
+
+850
+851
+
+5.6
+
+P REDICTING THE STEP RATIO FROM MEASURED STRUCTURE
+
+852
+853
+854
+855
+856
+857
+858
+859
+860
+861
+862
+863
+
+The step-size recipe looked unpredictable for a reason visible only once the data are pooled. At
+native scaling the scale ratio ω0 = kck/kbk barely varies within a family: it spans 6.9691 to 9.1254
+over the 24 cell-and-seed groups of the netﬂow sweep, 7.5058 to 7.6733 over the 13 cells of the
+structure probe and 0.4464 to 0.7928 on optimal transport. A variable that never varied was never
+implicated.
+The sweep moves it deliberately. Rescaling c 7→ αc is exactly (τ, σ) 7→ (ατ, σ/α), which
+leaves the gate product ﬁxed and moves r = τ /σ by α2 . We sweep α and r each over
+{0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100}, four decades, on 8 cells and 3 seeds at θ = 0.99, K = 64,
+tolerance 10−4 and a cap of 60000 iterations, solving with PDHG at ρ = 1: 1944 runs, 1510 converged, over 216 instances of which 209 have at least one converged run. The gate product τ σkLk2
+equals 0.99 to within 3.4 × 10−16 in all 1944 rows and exactly in 774 of them, so the sweep moves
+the ratio and never the admissible region. It is worth being plain about what that check is and is not:
+16
+
+864
+865
+866
+867
+868
+869
+870
+871
+872
+
+Table 15: Regret in iteration count against a per-instance oracle over the 209 instances of the ninepoint ratio grid, under the protocol used in every table of this paper that reports regret. The metric
+is N and not wall clock; the oracle is the minimum certiﬁed iteration count over that instance’s own
+ratio grid; a run that fails to certify inside the 60000-iteration cap is charged 60000 iterations, so all
+three policies are scored on all 209 instances. The certiﬁed column is the count each policy solved
+inside the cap. Both constants in the rule rows are ﬁtted on these same 209 instances, so those two
+rows are in sample; the constant carried onto unseen families is the separate ﬁt of Table 16.
+Policy
+Constant
+Geomean regret Worst case Certiﬁed
+Global constant ratio
+r = C/ω02 , geomean-optimal
+r = C/ω02 , worst-case-optimal
+
+873
+874
+875
+
+r = 0.01
+C = 0.263
+C = 0.037
+
+1.851
+1.181
+1.190
+
+26.04
+3.87
+3.18
+
+208
+209
+209
+
+876
+877
+878
+879
+880
+881
+882
+883
+884
+885
+886
+887
+888
+889
+890
+891
+892
+893
+894
+895
+896
+897
+898
+899
+900
+901
+902
+903
+904
+905
+
+θ = 0.99 is a ﬁxed input to the sweep and τ and σ are constructed from it, so the check veriﬁes the
+construction arithmetic and is not evidence that the gate depends on θ alone.
+The exponent 2 in that rescaling identity, which is a different object from the exponent p of the rule
+ﬁtted below, is a measured invariance and not a ﬁtted number. Group runs by log10 r + 2 log10 α
+within each cell and seed, and count a group only if it holds at least two distinct values of α and
+at least two converged runs. A group qualiﬁes for a window only if every α in it lies inside that
+window. Every group whose values of α are all at least 1 returns identical iteration counts, 169 of
+169 at α ≥ 1, 83 of 83 at α ≥ 3 and 25 of 25 at α ≥ 10. Restricting α to [0.3, 3] gives agreement
+in 71 of 72 groups and to [0.1, 10] in 230 of 237. Over the whole grid agreement is 437 of 601, and
+the disagreement sits where the objective is far smaller than the constraint data, at 12 of 120 groups
+whose smallest α is 0.01 and 71 of 120 whose smallest is 0.03, which is where the stopping test
+loses scale invariance.
+Table 15 scores policies against a per-instance oracle. The best single global ratio leaves 1.851×
+geometric-mean regret and 26.04× worst case, and a rule that reads the ratio off measured structure,
+r = C/ω02 , cuts both.
+The improvement over the best ﬁxed choice is 1.567× on geometric mean and 6.73× on worst
+case at the geomean-optimal constant, and 1.555× and 8.20× at the worst-case-optimal constant.
+Both of those worst-case ﬁgures are measured against r = 0.01, which is the geomean-optimal
+ﬁxed ratio and not the worst-case-optimal one. The worst-case-optimal ﬁxed ratio is r = 0.3, with
+geometric mean 2.040 and worst case 6.583, certifying 180 of 209, so the like-for-like worst-case
+improvement is 2.07×. Scoring each policy only where it certiﬁes, instead of charging capped runs
+at the cap, moves the constant-ratio row to 1.827× and 23.03× on 208 instances.
+One caveat travels with this result and Section 5.7 takes it up. The ratio grid censors the optimum: 91
+of 209 instances have their best ratio at the ﬂoor of 0.01 and 11 at the ceiling of 100, so 102 of 209
+optima sit on a grid edge, counting an instance as censored when any ratio attaining its minimum
+certiﬁed N sits at an endpoint. A naive log-log ﬁt of the optimal ratio against ω0 then returns a slope
+of −0.9365 under the geometric tie average this paper uses throughout, against −0.9309 with ties
+broken to the smallest ratio and −0.9421 to the largest, none of which is the exponent.
+
+906
+907
+
+5.7
+
+908
+
+The functional form of this rule is not new. A step ratio set as C/ω02 with ω0 = kck/kbk is the
+primal-weight heuristic of PDLP (Applegate et al., 2021), which this paper already credits. What is
+measured here is how much it is worth against the best ﬁxed ratio and whether one constant transfers
+across families.
+
+909
+910
+911
+912
+913
+914
+915
+916
+917
+
+T RANSFER OF THE STEP - RATIO RULE ACROSS FAMILIES
+
+We widen the netﬂow ratio grid to 13 points spanning 10−4 to 102 and ﬁt r = C/ω0p on that set alone,
+by minimising geometric-mean regret over p on a 0.05 grid and C on a 0.01 dex grid. The ﬁt returns
+p = 2.00 and C = 0.977, at geometric-mean regret 1.186. That pair is then carried unchanged onto
+three families the ﬁt never saw, and it is the only rule this paper reports.
+Table 16 is the result, under the protocol already used for Table 15. Policies are scored in iteration
+count against a per-instance oracle, the minimum certiﬁed N over that instance’s own ratio grid. An
+17
+
+918
+919
+920
+921
+922
+923
+924
+925
+926
+927
+928
+929
+930
+931
+932
+933
+
+Table 16: The ω0 rule carried off the family it was ﬁtted on. The rule is r = 0.977/ω02 , ﬁtted on
+netﬂow wide alone and then evaluated unchanged. Regret is in iteration count against a per-instance
+oracle over that instance’s own ratio grid, with a run that fails to certify inside the 60000-iteration
+cap charged at the cap, so both policies score every instance of every row. The ﬁxed column is the
+single grid ratio minimising geometric-mean regret on that set, chosen separately per set, and the
+certiﬁed columns are the instances each of the two policies solved inside the cap. The pooled row is
+the geometric mean over the 162 held-out instances, each family carrying its own best ﬁxed ratio.
+geomean regret
+certiﬁed
+Evaluation set
+
+n
+
+ω0 range
+
+ﬁxed
+
+rule
+
+rule worst
+
+rule
+
+ﬁxed
+
+netﬂow wide (ﬁtted on)
+optimal transport
+multi-commodity ﬂow
+held-out topologies
+
+108
+54
+54
+54
+
+0.0697 to 825
+0.0054 to 79.3
+0.0227 to 312
+0.0735 to 806
+
+2.779
+1.428
+2.840
+2.514
+
+1.186
+1.179
+1.032
+1.190
+
+2.12
+1.56
+1.26
+1.83
+
+108
+54
+54
+54
+
+100
+54
+48
+44
+
+pooled held out
+
+162
+
+0.0054 to 806
+
+2.168
+
+1.131
+
+1.83
+
+162
+
+146
+
+934
+935
+936
+937
+938
+939
+940
+941
+942
+943
+944
+945
+946
+947
+948
+949
+950
+951
+952
+953
+954
+955
+956
+957
+958
+959
+960
+961
+962
+963
+964
+965
+966
+967
+968
+969
+970
+971
+
+instance is a (cell, seed, α) triple. A run that fails to certify inside the 60000-iteration cap is charged
+60000 iterations, so both policies are scored on every instance of every set. The ﬁxed-ratio arm is
+the single grid ratio minimising geometric-mean regret on the evaluation set itself, chosen separately
+for each set, which favours the baseline; its certiﬁed count is reported alongside the rule’s because
+the transferred rule certiﬁes every instance of every set.
+The gain over the best ﬁxed ratio is 2.34× on the set the rule was ﬁtted on, 1.21× on optimal
+transport, 2.75× on multi-commodity ﬂow and 2.11× on the held-out topologies, and 1.92× pooled
+over the 162 held-out instances. The comparison is protocol dependent and we give the other reading
+here rather than in a second table. Under the alternative protocol in which each policy is scored only
+on the instances it certiﬁes, with the ﬁxed ratio restricted to those certifying at least 80 percent of
+the set, the ﬁxed baselines improve to 2.151× on 87 of 108 netﬂow wide instances, 1.428× on 54
+of 54 optimal transport, 2.185× on 44 of 54 multi-commodity ﬂow and 1.947× on 45 of 54 heldout topologies, a pooled 1.825× on 143 of the 162 held-out instances. They are then measuring
+a different and smaller problem on every row, which is why the tables do not use that protocol.
+Dropping the coverage ﬂoor as well lets one shared ratio certify barely two thirds of the pooled set,
+r = 30 at 1.752× on 108 of 162. The rule is untouched by the choice at 1.186, 1.179, 1.032, 1.190
+and 1.131, because it certiﬁes every instance of every set.
+The sample structure has to be stated plainly, because it bounds what transfer means here. Each set
+is (cells × seeds) distinct problems replicated at nine synthetic rescalings of c: netﬂow wide is 12
+distinct problems at 9 values of α, and each held-out set is 6 at 9. Variation in ω0 within a set is
+therefore variation in α, and c 7→ αc is exactly (τ, σ) 7→ (ατ, σ/α). The native ω0 spread inside
+netﬂow is only 6.97 to 8.25, a factor of 1.18, so the rule is being tested on rescalings and not on
+naturally occurring scale variation. The part that is not a rescaling is the comparison across families:
+optimal transport sits at native ω0 of 0.54 to 0.79 and multi-commodity ﬂow at 2.27 to 3.12, both
+genuinely away from netﬂow’s 7.5, and the transferred constant is not reﬁtted for either.
+One constant does not ﬁt every family. Reﬁtting C per family at p = 2 gives 0.977 on netﬂow wide,
+31.62 on optimal transport, 1.380 on multi-commodity ﬂow and 0.275 on the held-out topologies, a
+span of a factor of 115 between the smallest and the largest. What Table 16 reports is the netﬂow
+constant used unchanged, and the residual gap on optimal transport, 1.179 against a per-familyoptimal 1.026, is the price of that transfer.
+Two estimators of the exponent disagree, and reducing censoring moves only one of them. Table 17
+runs both over ﬁve ratio grids of increasing width. The log-log slope of the argmin ratio against ω0
+rises in magnitude from −0.94 on the original grid, where 102 of 209 optima sit on a grid edge, to
+−1.74 on the ultrawide ten-decade grid, where 14 of 88 do. The regret-minimising exponent does
+not move with it: it is 2.10, 2.00, 1.90, 2.00 and 2.00 on the same ﬁve grids. The honest reading is
+that censoring biases the slope estimator toward zero, that removing censoring moves it from −0.94
+toward −1.74 without reaching the regret estimator, and that the two therefore bracket the exponent
+between about 1.7 and 2.1 and have not met. That bracket is consistent with the value 2 implied
+18
+
+972
+973
+974
+975
+976
+977
+978
+979
+980
+
+Table 17: Two estimators of the exponent in r = C/ω0p , over ﬁve ratio grids, under the two conventions used wherever this paper reports them. Censoring is the count of instances for which any
+ratio attaining the minimum certiﬁed N sits at an endpoint of that instance’s grid. The slope is a
+log-log ﬁt of the argmin ratio against ω0 over the instances with a converged run, with tied argmin
+ratios averaged geometrically; the other two tie rules move each slope by at most 0.011. The regret
+exponent minimises geometric-mean regret in iteration count, searched over p on a 0.05 grid at the
+best constant on a 0.01 dex grid for each exponent.
+Grid
+n Ratio range
+Censored Slope Regret exponent
+
+981
+
+original
+netﬂow wide
+8 seeds
+ﬁner grid
+ultrawide
+
+982
+983
+984
+985
+
+209
+108
+144
+80
+88
+
+10−2 to 102
+10−4 to 102
+10−4 to 103
+10−5 to 3 × 102
+10−6 to 104
+
+102
+33
+46
+15
+14
+
+−0.94
+−1.54
+−1.58
+−1.68
+−1.74
+
+2.10
+2.00
+1.90
+2.00
+2.00
+
+986
+987
+988
+989
+990
+991
+
+Table 18: Analytic tile selection against measurement. Occupancy raises the rank correlation from
+0.355 to 0.363 and lowers the best-tile hit rate from 1 of 7 to 0 of 7. All four models pick the best
+tile at most 1 time in 7, which is the load-bearing ﬁgure.
+Model
+Mean Spearman Picked the best tile
+
+992
+
+Rooﬂine only
+Plus occupancy
+Plus occupancy and wave quantisation
+Plus a ﬁtted per-launch cost of 10−5 s
+
+993
+994
+995
+
+0.355
+0.363
+0.282
+0.567
+
+1 of 7
+0 of 7
+0 of 7
+1 of 7
+
+996
+997
+998
+999
+1000
+1001
+1002
+1003
+1004
+1005
+1006
+
+by the primal weight, and at its lower end below it; we do not claim the exponent is exactly 2, and
+no estimator on any of the ﬁve grids returns 1.8 as its argmin. The regret proﬁle is ﬂat enough to
+say how ﬁnely the data resolve it. On the original grid the set of exponents within 1 percent of the
+optimum is not even an interval: it runs from 1.40 to 2.90 with an isolated point at 1.15. On the
+ultrawide grid, which is the least censored, that set is 1.80 to 2.25, with p = 1.8 costing 0.8 percent
+and p = 2.4 costing 2.2 percent. That is the regret estimator alone; the verdict this paper carries is
+the two-estimator bracket above, about 1.7 to 2.1. The ﬁner 19-point grid has now run and is the
+fourth row of the table; it does not narrow the bracket, returning −1.68 and 2.00, between the wide
+and ultrawide grids on both estimators.
+
+1007
+1008
+
+5.8
+
+N EGATIVE RESULTS
+
+1009
+1010
+1011
+1012
+1013
+1014
+1015
+1016
+1017
+1018
+1019
+1020
+1021
+1022
+1023
+1024
+1025
+
+Cheap a-priori predictors fail on the task where ω0 succeeds. Table 18 scores four analytic models
+of the fusion tile against measurement by rank correlation over 7 sizes and 6 tiles.
+The interpretable structure is a change of regime. The rooﬂine-only model scores −0.943 at n = 128
+and +0.829 at n ≥ 992, so it is right only once the kernel is bandwidth-bound and is anti-correlated
+when the kernel is overhead-bound. The device constants are 746.7 GB/s achievable ﬂoat64 bandwidth, 1.140 TFLOP/s ﬂoat64 and a ridge point of 1.527 ﬂop per byte, on an accounting of 31 ﬂops
+and 56 bytes per pixel-iteration; the unfused TV iteration sits at 0.554 ﬂop per byte and the 24 × 4
+tile reaches 2.725, above the ridge. Two caveats belong in the text and not in a comment: the ﬂop
+count is hand-counted from tv_update.cu and not instrumented, and occupancy is computed
+from assumed Ada AD102 constants rather than from a device query.
+Empirical sharpness looks predictive and is not. Over 17 converged instances the correlation between log sharpness and log iteration count is +0.943 pooled, −0.539 within min-cost ﬂow over 13
+instances, −0.842 within the regular topology over 6, −0.120 within the grid topology over 7 and
++0.983 within TV over 4. That last ﬁgure is a four-point correlation spanning only two image sizes
+and is really tracking size, as the source report’s own caveat says. The pooled ﬁgure only separates
+two clusters, min-cost ﬂow at mean sharpness 92.1 and mean 10230 iterations against TV at 43.3
+and 624. Within a family the sign inverts.
+19
+
+1026
+1027
+1028
+1029
+1030
+1031
+1032
+1033
+1034
+1035
+1036
+1037
+1038
+1039
+1040
+1041
+1042
+1043
+1044
+1045
+1046
+1047
+1048
+1049
+1050
+1051
+1052
+1053
+1054
+1055
+1056
+1057
+1058
+1059
+1060
+
+A leakage-free version of the estimator has to watch most of the solve before it becomes even moderately predictive. Estimating the gap decay rate on a ﬁxed index window of certiﬁcate checks and
+correlating its logarithm against log iteration count over the min-cost ﬂow instances gives +0.539
+over the ﬁrst 3 checks, +0.201 over 5, +0.018 over 10, −0.275 over checks 10 to 20, −0.369 over
+20 to 40 and −0.620 over 40 to 80. The sign ﬂips halfway through: early in the solve a faster
+measured decay goes with more iterations and not fewer, and only over checks 40 to 80 does the
+windowed estimate acquire the negative sign that the full-solve sharpness estimate carries within
+min-cost ﬂow, −0.539. That window is scored on the 12 of 13 instances that record at least 80
+certiﬁcate checks; scoring the thirteenth on its truncated window instead gives −0.755. Checks are
+64 iterations apart, so the window ends at 5120 iterations against a median min-cost ﬂow solve of
+9600, and the estimator reaches |r| = 0.620 only after 53 percent of the run.
+The one structure-dependent selector that does work is the construction gate. It is exact, symbolic
+and free, and admits 1755 of 2106 settings purely as a function of the gate product, 351 of 351
+at each of θ ∈ {0.1, 0.3, 0.6, 0.9, 0.99} and 0 of 351 at θ = 1.02. Rejected settings were never
+executed, so the gate is veriﬁed as sufﬁcient for non-divergence and never as necessary, and 257 of
+the admitted runs still hit the iteration cap. It is a feasibility test and not a rate test, so it tells a search
+which recipes are legal and nothing about which legal recipe is fast. That is the hinge between these
+negatives and the case for search.
+5.9
+
+M EASUREMENT CONDITIONS
+
+Timing runs were not on exclusive machines. One dispersion ﬁgure is available as prose only: the
+reference cell f64_K64 at n = 256, re-measured in 12 independent processes, spans 20.297 to
+20.432 microseconds per iteration, a spread of 0.66 percent, and that run has no saved artifact. A
+recomputable dispersion is available and is larger. Re-running the n = 256 and n = 496 fusion
+sweeps at 9 repeats one day later moves the traced baseline by 2.0 and 1.1 percent, the static-overtraced gain from 1.347 to 1.401, a change of 4.0 percent, and from 1.093 to 1.179, a change of 7.8
+percent, and the best-tile speedup from 1.868 to 1.940 and from 1.356 to 1.428. No fusion ﬁgure
+in this section is stable in its third signiﬁcant ﬁgure. The fusion tables print three digits so that the
+arithmetic can be checked against the artifacts, and only the ﬁrst two should be read as measured.
+The frozen ﬁnal holdout has never been evaluated, and none of the ﬁgures in this section touch it.
+The families described as held out in Section 5.7 are held out from the rule ﬁt only; they are not the
+frozen paper holdout.
+A vLLM server held 15.4 GB resident on the timed 4090 at 0 percent utilisation throughout. The
+Blackwell box is shared: the fusion microbenchmarks used GPU 2 at 0 percent utilisation but not
+exclusively, and all four GPUs were idle for the cross-architecture end-to-end runs.
+
+1061
+1062
+1063
+1064
+1065
+1066
+1067
+1068
+1069
+1070
+1071
+1072
+1073
+1074
+1075
+1076
+1077
+1078
+1079
+
+6
+
+D ISCUSSION
+
+6.1
+
+W HAT THE FACTORISATION BUYS
+
+The factorisation lets the two factors be searched separately. The evidence for the ﬁrst factor is exact
+rather than statistical. Across every end-to-end fusion sweep, seven sizes from 128 to 1984 pixels on
+two devices, the traced-bound baseline, the static chunked loop and every fusion tile reach the same
+iteration count on the same instance and all certify: 72 of 72 instances, eight arms each, zero iteration
+mismatches, zero certiﬁcation failures. All fourteen sweeps ran at K = 256. The iteration count
+was also identical on the two architectures measured, at every size run on both: 576.000 and 682.667
+at n=128, 597.333 and 682.667 at n=256, and 1066.667 and 1152.000 at n=496, for K = 64 and
+K = 256 at tolerance 10−4 , on both sm_89 and sm_120. At n=128 both devices give the same perinstance vectors, [1216, 320, 448, 448, 384, 640] and [1280, 512, 512, 512, 512, 768]. Kernel search
+can therefore hold N ﬁxed and time a single arithmetic budget, within the two-device scope in which
+that equality was measured.
+The converse half holds under ﬁxed precision, conditioned on cadence. At K = 256, step sizes that
+change N by 4.3125× (2944.000 against 682.667) change the cost per iteration by 3.8 percent, from
+19.0766 to 19.7976 microseconds across the four f64_K256 arms, a factor of 1.0378 (Table 19).
+At K = 64 the same two step-size presets give 4.839× (2890.667 against 597.333). Scheme identity
+20
+
+1080
+1081
+1082
+1083
+1084
+
+Table 19: The factorisation and its one measured leak. TV, n=256, tolerance 10−4 , mean over
+six OCT images. Under ﬁxed precision the cost per iteration spans 3.8 percent across arms whose
+iteration counts differ by 4.3125×. Under the adaptive schedule it spans 16.6 percent.
+policy
+algorithm
+mean N cost per iteration (µs)
+
+1085
+1086
+1087
+1088
+1089
+1090
+1091
+1092
+
+f64_K256
+f64_K256
+f64_K256
+f64_K256
+
+condat_vu_banked
+pdhg_banked
+condat_vu_balanced
+pdhg_balanced
+
+682.667
+682.667
+2944.000
+2944.000
+
+19.798
+19.683
+19.077
+19.227
+
+schedule_K256
+schedule_K256
+schedule_K256
+schedule_K256
+
+condat_vu_banked
+pdhg_banked
+condat_vu_balanced
+pdhg_balanced
+
+682.667
+682.667
+2944.000
+2944.000
+
+11.052
+11.232
+12.578
+12.888
+
+1093
+1094
+1095
+1096
+1097
+1098
+1099
+1100
+1101
+1102
+1103
+1104
+1105
+1106
+1107
+1108
+
+is inert to within one cadence block at K = 64 and K = 256: the stopping test is evaluated only at
+multiples of K, so N is the crossing iteration rounded up to the next multiple of K, and at K = 256
+the equality is resolved only to 256 iterations. Inside that resolution condat_vu_banked and
+pdhg_banked share the per-instance vector [1024, 512, 768, 512, 512, 768] at n=256 and agree
+on 11 of 12 certiﬁed netﬂow pairs; the twelfth, size 12 instance 1, agrees at the 20000-iteration cap
+with conv false and gap 2.858 × 10−4 for both schemes, so it is an agreement about failure rather
+than about N . At K = 16 and n=256 the two schemes do differ, 584.000 against 578.667.
+Cadence carries the largest single share of the variance in log cost per iteration, 47.43 percent at 10−4
+and 51.19 percent at 10−6 . The mechanism is chunk length, not check frequency. Measured directly
+over the 24 certiﬁcate-on minus certiﬁcate-off differences in a loop-structure sweep, the certiﬁcate
+term ranges from −239.90 to +844.56 nanoseconds per iteration against a static per-iteration cost
+of 8.09 to 11.94 microseconds, and at n=128, K = 64 it is 26.5 nanoseconds. At K ≥ 64 the check
+itself is inside noise; what cadence buys is the length of the chunk that can be unrolled between
+checks.
+
+1109
+1110
+1111
+1112
+1113
+1114
+1115
+1116
+1117
+1118
+1119
+1120
+1121
+1122
+1123
+1124
+1125
+1126
+1127
+1128
+1129
+1130
+1131
+1132
+1133
+
+6.2
+
+W HERE THE AXES STOP SEPARATING
+
+The structure predicts its own failure modes and the measurements ﬁnd both. An adaptive precision
+schedule couples the factors, because the switch iteration is chosen from the gap trajectory, so the
+fraction of the run spent in ﬂoat32 depends on the step sizes: the 3.8 percent spread under ﬁxed
+precision becomes 16.6 percent under the schedule (Table 19). The two execution decisions also stop
+being independent past about 1000 pixels. The static loop’s advantage over the traced bound falls
+from 1.673× at 128 pixels through 1.347, 1.291, 1.093 and 1.016 to a minimum of 0.989× at 1488
+and 0.993× at 1984, so at the two largest sizes the static bound is mildly harmful rather than merely
+exhausted. Fusion over the static loop instead turns U-shaped, at 1.571×, 1.060× and 1.410×
+across 128, 992 and 1984 pixels. Each of those is a ratio of summed wall time over the instances
+of that sweep rather than a mean of per-instance ratios; the per-instance geometric mean at 128
+pixels is 1.580×. The 128-pixel sweep uses six raw crops and the 992 to 1984 pixel sweeps use four
+montages each, of two to four distinct scans, since a raw scan caps an honest crop near 496 pixels.
+The 1.410× at 1984 pixels is a fusion gain over the static loop at ﬂoat64 throughout, 2.2407709
+seconds static over 1.5890337 seconds for the 24 × 4 tile, and is not a precision comparison. The
+execution structure and the tile must be chosen jointly at large size and can be chosen independently
+at small.
+6.3
+
+P REDICTING THE STEP RATIO FROM PROBLEM STRUCTURE
+
+Rescaling the objective vector as c → αc is identically the step rescaling (τ, σ) → (ατ, σ/α), so
+the construction gate is invariant under it while the step ratio r = τ /σ and the conditioning proxy
+ω0 = kck/kbk both move. Sweeping α over decades therefore separates the ratio from the gate.
+Fitting a rule of the form r = C/ω0p on the netﬂow wide sweep alone, by minimising geometricmean regret over its 13-point ratio grid, with p searched on a 0.05 grid and C on a 0.01 dex grid,
+gives p = 2.00 and C = 0.977. That is the only rule this paper reports, and it is the pair used in the
+21
+
+1134
+1135
+1136
+1137
+1138
+1139
+1140
+1141
+1142
+1143
+
+Table 20: The ω0 rule transfers off the family it was ﬁtted on. The rule is r = C/ω02 with C = 0.977,
+ﬁtted on netﬂow wide alone and then evaluated unchanged. This is the protocol used in every table of
+this paper that reports regret. Regret is against the per-instance oracle over that instance’s own ratio
+grid, with a run that fails to certify inside the 60000-iteration cap charged at the cap, so both policies
+are scored on every instance of every row. The ﬁxed column is the single grid ratio minimising
+geometric-mean regret on that set, chosen separately per set, and both certiﬁed columns count the
+instances that same policy solved inside the cap. The pooled row is the geometric mean over the 162
+held-out instances, each family carrying its own best ﬁxed ratio.
+geomean regret
+certiﬁed
+
+1144
+
+evaluation set
+
+1145
+
+netﬂow wide (ﬁtted on)
+optimal transport
+multi-commodity ﬂow
+held-out topologies
+pooled held out
+
+1146
+1147
+1148
+1149
+1150
+
+n
+
+ω0 range
+
+ﬁxed
+
+rule
+
+rule worst
+
+rule
+
+ﬁxed
+
+108
+54
+54
+54
+
+0.0697 to 825
+0.0054 to 79.3
+0.0227 to 312
+0.0735 to 806
+
+2.779
+1.428
+2.840
+2.514
+
+1.186
+1.179
+1.032
+1.190
+
+2.125
+1.562
+1.262
+1.825
+
+108
+54
+54
+54
+
+100
+54
+48
+44
+
+162
+
+0.0054 to 806
+
+2.168
+
+1.131
+
+1.825
+
+162
+
+146
+
+1151
+1152
+1153
+1154
+1155
+1156
+1157
+1158
+1159
+1160
+1161
+1162
+1163
+1164
+1165
+1166
+1167
+
+abstract, the introduction and Section 5. Evaluated unchanged on three held-out families, it beats
+the best single ﬁxed ratio on every one of them (Table 20), and the cleanest statement is coverage
+rather than regret: the rule certiﬁes every instance of all four sets, while the best ﬁxed ratio for each
+set certiﬁes 100 of 108, 54 of 54, 48 of 54 and 44 of 54.
+The comparison is protocol dependent and both protocols are reported, in the same words as Section 5. Under the protocol of Table 20, which is the one every table in this paper uses, a run that
+fails to certify inside the 60000-iteration cap is charged at the cap, so both policies are scored on
+the identical instance set. Under the alternative protocol in which each policy is scored only on
+the instances it certiﬁes, with the ﬁxed ratio restricted to those certifying at least 80 percent of the
+set, the ﬁxed baselines improve to 2.151× on 87 of 108 netﬂow wide instances, 1.428× on 54 of
+54 optimal transport, 2.185× on 44 of 54 multi-commodity ﬂow and 1.947× on 45 of 54 held-out
+topologies, a pooled 1.825× on 143 of the 162 held-out instances. They are then measuring a different and smaller problem on every row. Dropping the coverage ﬂoor as well lets one shared ratio
+certify barely two thirds of the pooled set, r = 30 at 1.752× on 108 of 162. The exponent 2 is the
+value implied by the primal-weight heuristic in PDLP; the evidence here is consistent with it without
+pinning it down, and Section 6.4 gives the identiﬁcation caveat in full.
+
+1168
+1169
+1170
+
+6.4
+
+L IMITATIONS
+
+1171
+1172
+1173
+1174
+1175
+1176
+1177
+1178
+1179
+1180
+1181
+1182
+1183
+1184
+1185
+1186
+1187
+
+Two GPU architectures are in scope for every timing claim, an RTX 4090 (sm_89) and an RTX PRO
+6000 Blackwell Max-Q (sm_120), so no accelerator-portability claim is available. An RTX 5090
+was measured earlier and is excluded from scope; its rows survive in the archive and are not used
+here. The two in-scope devices disagree about whether to fuse at all. At n=496 the best Blackwell
+tile runs at 0.925× the plain static loop and at 992 pixels at 0.989×, so on that device the correct
+decision at two sizes is not to fuse. The devices agree on the tile at 128 pixels (8 × 4) and 256 pixels
+(24 × 4), disagree at 384 (24 × 4 against 32 × 4), 496 (32 × 4 against 16 × 2), 992 (32 × 2 against
+24 × 4) and 1488 (24 × 4 against 32 × 2), and agree again at 1984 (24 × 4).
+The frozen ﬁnal holdout has never been evaluated and the pre-registration is untouched. The ﬁeld
+final_holdout_loaded is false in all 23 data.json records under results/ that carry
+it; the nine older hardware_codex records predate that ﬁeld and carry only a three-patch per-run
+diagnostic split, whose report states that the pre-registration and ﬁnal holdout remain untouched.
+Every measurement here is exploratory, and the LP diagnostics use only air05, trento1 and neos8
+from the frozen calibration partition under a 20000-iteration cap.
+Temporal fusion is untested on the sparse families rather than proved inapplicable to them. The
+kernel is a dense two-dimensional stencil with tile edge S = B + 2T and a halo of width T whose
+valid region shrinks one cell per side per iteration. Transfer to a sparse incidence operator was not
+22
+
+1188
+1189
+1190
+1191
+1192
+1193
+1194
+1195
+1196
+1197
+1198
+1199
+1200
+1201
+1202
+1203
+1204
+1205
+1206
+1207
+1208
+1209
+1210
+1211
+1212
+1213
+1214
+1215
+1216
+1217
+1218
+1219
+1220
+1221
+1222
+1223
+1224
+1225
+1226
+1227
+1228
+1229
+1230
+1231
+1232
+1233
+1234
+1235
+1236
+1237
+1238
+1239
+1240
+1241
+
+attempted and no fusion measurement on netﬂow, OT or MCF exists, so this is a scope limit and not
+an impossibility result.
+The ω0 exponent is censored by the ratio grid, and the estimate has moved as that censoring has
+fallen. Two conventions are ﬁxed for every count in this paragraph and named again in the caption
+of the exponent table in Section 5: an instance counts as censored when any ratio attaining its
+minimum certiﬁed N sits at an endpoint of that instance’s grid, and tied argmin ratios are averaged
+geometrically before the log-log ﬁt. The narrow grid has nine points from 0.01 to 100 and places the
+oracle at the ﬂoor for 91 of 209 instances and at the ceiling for 11; its log-log ﬁt of the oracle ratio on
+ω0 gives slope −0.94, or −1.14 over the 118 instances left after the ﬂoor-censored ones are dropped.
+Four wider or ﬁner grids now exist, and the slope magnitude rises across them: −0.94 with 102 of
+209 on an edge (9 points), −1.54 with 33 of 108 (13 points), −1.58 with 46 of 144 (12 points, 8
+seeds), −1.68 with 15 of 80 (19 points) and −1.74 with 14 of 88 (11 points over ten decades). It does
+not rise monotonically in the censored fraction: the eight-seed grid censors a larger fraction than the
+13-point grid and still returns the larger slope. The regret-minimising exponent moves in the other
+direction and far less: 2.10 on the nine-point pooled grid, 2.00 on the 13-point wide grid, 1.90 on the
+12-point eight-seed grid, 2.00 on the 19-point ﬁne grid and 2.00 on the 11-point ultrawide grid. It is
+not identiﬁed. At the best constant for each exponent, every exponent from 1.85 to 2.15 is within 1
+percent of the optimum on the wide grid, 1.65 to 2.45 on the eight-seed grid, 1.75 to 2.05 on the ﬁne
+grid and 1.80 to 2.25 on the ultrawide grid; on the narrow pooled grid that set is not an interval at all,
+running from 1.40 to 2.90 with an isolated point at 1.15. The two estimators bracket the exponent
+between about 1.7 and 2.1 and approach each other from opposite directions as censoring falls, but
+they have not met. Both remain consistent with the value 2 implied by PDLP’s primal weight, and
+the bracket lies at its lower end below it. The 19-point grid has run and is included above; it does not
+narrow the bracket. No claim here should be read as pinning the exponent tighter than that bracket,
+and none of the ﬁve grids returns 1.8 as the argmin of either estimator.
+A clairvoyant policy that knows the cell and the scaling still carries 1.112× geometric-mean and
+1.814× worst-case regret against the per-seed oracle over 142 of 144 instances. That measurement
+covers 2 cells and 8 seeds, while the transfer results of Table 20 cover 10 cells, and 54 of the seed
+sweep’s 144 instances also appear in the netﬂow wide row of that table, so the two are not computed
+on disjoint instance sets. It is an indication of the seed noise present in this kind of measurement
+and not a ﬂoor for any regret ﬁgure in that table.
+No LLM advantage is claimed: the arms shared a fallback RNG stream and were positively
+correlated rather than independent, with 336 of 336 fallback-sourced LLM-arm candidates byteidentical to candidates of the matched random run. No joint-search advantage is claimed. On LP,
+backend-only, sequential, reverse-sequential and joint selection all choose frozen_B0 / f64_K50
+at 0.392627 s over two instances. On TV, joint, implementation-only and implementation-thenalgorithm all choose condat_vu_banked / schedule_K256 at 0.0076265 s penalised SGM-1,
+while algorithm-then-implementation chooses pdhg_banked / schedule_K256 at 0.0077793 s,
+a 1.020× gap. Sequential selection therefore ties joint in one order and not the other, over an exhaustively enumerated 12-cell catalog whose own protocol record declares it development only and
+not search efﬁciency.
+Five narrower boundaries belong on the record. Scheme identity is inert at K = 64 and K = 256
+at 10−4 but not everywhere: at K = 16 and n=256, on both devices, condat_vu_banked
+averages 584.000 iterations against 578.667 for pdhg_banked, with per-instance vectors
+[1008, 512, 608, 416, 320, 640] against [1008, 496, 608, 400, 320, 640]. At n=128 and n=496 on the
+Blackwell the two schemes agree at K = 16, at 552.000 and 1040.000, so the split is size-speciﬁc
+as well as cadence-speciﬁc. Rejected recipes were never run, so the gate is veriﬁed as sufﬁcient
+and not as necessary. The dense gate grid records the decision alone: 1573 gate evaluations, 121
+distinct (τ, σ) pairs across 13 cells for scheme pdhg only, admitting 1220 and rejecting 353, with
+N , exec_s and converged null in every row because no solve was attached to it. Sufﬁciency
+also carries a budget scope: across the two solving sweeps on that device, 1755 of 2106 runs were
+admitted and 257 of those hit the 150000-iteration cap, so admission does not imply convergence
+within budget. Sample sizes are small: six OCT images per size in the end-to-end sweeps, four
+montages in each of the larger sizes, three timing repeats per instance, and three seeds per cell in
+the four sweeps of Table 20 and the two that make up the narrow grid, rising to four seeds in the
+ultrawide and ﬁne grids and eight in the two seed-noise grids. All fourteen end-to-end fusion sweeps
+ran at K = 256, so the iteration agreement they establish is resolved only to the nearest 256 against
+23
+
+1242
+1243
+1244
+1245
+1246
+1247
+
+Table 21: Falsiﬁers, with the measurement each would overturn.
+observation that falsiﬁes
+current measurement
+A fusion tile or execution structure that
+changes the iteration count on any instance
+
+72 of 72 instances agree exactly at K = 256,
+zero mismatches; a nine-repeat rerun reproduces the same means, 640 at n=256 and
+1024 at n=496, while the timing ratios move
+4 to 5 percent
+
+An adaptive-schedule leak that grows with
+problem size or family
+
+16.6 percent against 3.8 percent under ﬁxed
+precision, at one cadence, one size, one family
+and one tolerance; the second size and second
+family were not measured, so this falsiﬁer is
+not yet evaluable
+
+A cheap a-priori predictor that picks the fusion tile
+
+the a-priori rooﬂine model reaches 0.355
+mean Spearman and 1 correct pick of 7;
+adding a per-launch cost ﬁtted on the same
+sweep raises it to 0.567 and still picks 1 of
+7
+
+A family on which the r = C/ω02 rule loses to
+a ﬁxed ratio
+
+on three held-out families it does not: 1.131×
+against 2.168× pooled geomean regret over
+162 instances, certifying 162 of 162 against
+146
+
+A device or family on which cadence is not
+the dominant variance share
+
+47.43 and 51.19 percent of variance in cost per
+iteration, from a 12-cell fANOVA on one device, one family and one size, with one observation per cell and no residual term, and with
+cadence carrying more levels than either competitor
+
+1248
+1249
+1250
+1251
+1252
+1253
+1254
+1255
+1256
+1257
+1258
+1259
+1260
+1261
+1262
+1263
+1264
+1265
+1266
+1267
+1268
+1269
+1270
+1271
+1272
+1273
+1274
+1275
+1276
+1277
+1278
+1279
+1280
+1281
+
+measured N between 256 and 2048. Neither device was exclusive during timing. On the 4090 a
+resident server held 15427 MiB of 24564 MiB at 0 percent utilization; the Blackwell box is shared
+and these runs used a GPU that was idle but not reserved. No occupancy snapshot was recorded for
+the Blackwell, so that second claim rests on the run report rather than on a machine-readable ﬁeld.
+The 4090 reference cell is stable to 0.66 percent across 12 independent processes, spanning 20.297
+to 20.432 microseconds per iteration, a factor of 1.00665. Finally, cadence is not our discovery as
+an engineering choice. OR-Tools ships termination_check_frequency with a default of
+64 and an explicit annotation that the check involves extra work; what is new here is its status as the
+one gene the two factors share, not the fact that it is tuned.
+
+1282
+1283
+1284
+1285
+
+6.5
+
+W HAT WOULD FALSIFY THE THESIS
+
+1286
+1287
+1288
+1289
+1290
+1291
+1292
+1293
+1294
+1295
+
+Table 21 lists the ﬁve tests we consider decisive. The two negatives are the sharpest, because a
+better instrument would overturn them tomorrow. Rooﬂine is anti-correlated at n=128 (−0.943)
+and positively correlated at n ≥ 992 (+0.829), with per-size Spearman coefﬁcients of −0.943,
+−0.143, +0.143, +0.943 and then +0.829 at each of the three largest sizes, for a mean of 0.355.
+Sharpness pools to a log-log r = +0.943 over 17 converged instances, though the same pooled
+correlation unlogged is only +0.724, and the sign is not stable within families: −0.539 within
+netﬂow (n = 13), −0.842 within the regular topology (n = 6), −0.120 within grid (n = 7) and
++0.983 within TV (n = 4). One of the four subgroups therefore does not invert. The four are not
+disjoint: the netﬂow subgroup is exactly the union of the grid and regular topology subgroups, and
+the subgroups of size 4 and 6 carry no inference on their own.
+24
+
+1296
+1297
+
+7
+
+C ONCLUSION
+
+1298
+1299
+1300
+1301
+1302
+1303
+1304
+1305
+1306
+1307
+1308
+1309
+1310
+1311
+1312
+1313
+1314
+1315
+1316
+1317
+1318
+1319
+1320
+1321
+1322
+1323
+1324
+
+Time to a certiﬁed solution factorises into an iteration count set by the method, the certiﬁcate cadence
+and the tolerance, and a cost per iteration set by the hardware, the execution structure, the kernel and
+the size. At ﬁxed size and ﬁxed cadence the ﬁrst factor is invariant to the hardware, the execution
+structure and the kernel, exactly, in 72 of 72 measured instances across two architectures and seven
+sizes. It is not invariant to size: at K = 64 in ﬂoat64 with condat_vu_banked, N is 576.000 at
+n=128, 597.333 at n=256, 736.000 at n=384 and 1066.667 at n=496.
+Cadence is the gene the two factors share within the recipe, and it carries the largest single variance
+share in cost per iteration. It is not the only gene in both. Size appears in both factors as well, and
+precision changes N at some sizes: on the Blackwell at K = 64, f32_cert64 gives 586.667
+against ﬂoat64’s 576.000 at n=128 and 1077.333 against 1066.667 at n=496, while at n=256 the
+two agree at 597.333.
+Three consequences follow. Kernel search runs against a ﬁxed arithmetic budget: on the two architectures measured, the iteration count was identical at every size run on both, so N can be held
+ﬁxed within that scope while the second factor is timed. Legality is decided symbolically before
+any solve, by a gate that is an exact function of θ and family dependent in its threshold, veriﬁed as
+sufﬁcient for admission and never as necessary; it admits on TV what it rejects on netﬂow, where the
+PDHG gate product τ σkLk2 runs 1.02267, 1.03040, 1.03577 and 1.03781 at sizes 12, 16, 24 and
+32. Every rejected row is a balanced conﬁguration, 24 of 24, and no banked conﬁguration is ever
+rejected. And the recipe is predictable from measured structure where a ﬁxed choice is not: scaling
+the step ratio as C/ω02 with C = 0.977 ﬁtted on netﬂow alone cuts pooled geomean regret on 162
+held-out instances from 2.168× to 1.131× and lifts coverage from 146 to 162 of 162, at an exponent
+consistent with, though not pinned to, the value 2 implied by PDLP’s primal weight.
+The numerical admission run for the temporal fusion kernel is archived with the other artifacts: 106
+lines holding 102 checked cases, 17 tile and fused-depth variants at three image shapes including a
+non-square 100 by 130, in both proximal settings. The worst absolute deviation against sequential
+single-step reference launches is 4.649 × 10−15 and the verdict is PASS within ﬂoat64 tolerance. No
+case is bitwise identical, so the admission is numerical and not a ﬂoating-point equivalence proof.
+
+1325
+1326
+1327
+
+R EPRODUCIBILITY S TATEMENT
+
+1328
+1329
+1330
+1331
+1332
+1333
+1334
+1335
+
+Every numeric claim in this paper names the artifact that produced it in a LaTeX source comment
+of the form % source: results/.... Iteration counts additionally name their instance population, because scan selection depends on both the sampling seed and the number of scans drawn:
+the catalog fold is six scans at data seed 20260907 drawn from a pool of twelve, and the fusion
+sweep is six scans at seed 0, and the two selections share no images. Running the fusion harness
+on the catalog draw reproduces the catalog iteration counts. The frozen ﬁnal holdout has not been
+evaluated and no number in this paper comes from it.
+
+1336
+1337
+1338
+
+E THICS S TATEMENT
+
+1339
+1340
+1341
+1342
+1343
+
+The imaging experiments solve a convex denoising objective on an existing OCT dataset. Optimization accuracy does not establish preservation of pathology or suitability for clinical decisions. We
+report no clinical efﬁcacy result.
+
+1344
+1345
+1346
+
+AI U SE S TATEMENT
+
+1347
+1348
+1349
+
+Language models assisted literature discovery, experiment planning, code implementation, debugging, manuscript drafting and interpretation of results. The authors are responsible for verifying the
+mathematics, citations, code and reported measurements.
+25
+
+1350
+1351
+1352
+1353
+1354
+1355
+1356
+
+R EFERENCES
+David Applegate, Mateo Díaz, Oliver Hinder, Haihao Lu, Miles Lubin, Brendan O’Donoghue, and
+Warren Schudy. Practical large-scale linear programming using primal-dual hybrid gradient, 2021.
+URL https://arxiv.org/abs/2106.04756.
+Jean-Bernard Baillon and Georges Haddad. Quelques propriétés des opérateurs angle-bornés et
+n-cycliquement monotones. Israel Journal of Mathematics, 26(2):137–150, 1977.
+
+1357
+1358
+1359
+1360
+1361
+1362
+1363
+1364
+1365
+1366
+1367
+1368
+1369
+1370
+1371
+1372
+1373
+1374
+1375
+1376
+1377
+1378
+1379
+
+Heinz H. Bauschke and Patrick L. Combettes. Convex Analysis and Monotone Operator Theory in
+Hilbert Spaces. CMS Books in Mathematics. Springer, 2nd edition, 2017.
+Bernd Bischl, Pascal Kerschke, Lars Kotthoff, Marius Lindauer, Yuri Malitsky, Alexandre Fréchette,
+Holger Hoos, Frank Hutter, Kevin Leyton-Brown, Kevin Tierney, and Joaquin Vanschoren. ASlib:
+A benchmark library for algorithm selection. Artiﬁcial Intelligence, 237:41–58, 2016. doi:
+10.1016/j.artint.2016.04.003. URL https://doi.org/10.1016/j.artint.2016.04.
+003.
+Mario Bravo and Roberto Cominetti. Sharp convergence rates for averaged nonexpansive maps.
+Israel Journal of Mathematics, 227:163–188, 2018.
+Nicolas Brisebarre, Giuseppe Carrino, Theo Mary, and Elisa Riccietti. Mixed precision Newton’s
+method for optimization, 2026. URL https://arxiv.org/abs/2607.04828.
+Erin Carson and Nicholas J. Higham. Accelerating the solution of linear systems by iterative reﬁnement in three precisions. SIAM Journal on Scientiﬁc Computing, 40(2):A817–A847, 2018. doi:
+10.1137/17M1140819. URL https://doi.org/10.1137/17M1140819.
+Antonin Chambolle and Thomas Pock. A ﬁrst-order primal-dual algorithm for convex problems
+with applications to imaging. Journal of Mathematical Imaging and Vision, 40(1):120–145, 2011.
+doi: 10.1007/s10851-010-0251-1.
+Kaihuang Chen, Defeng Sun, Yancheng Yuan, Guojun Zhang, and Xinyuan Zhao. HPR-LP: An implementation of an Halpern Peaceman–Rachford method for linear programming. arXiv preprint
+arXiv:2408.12179, 2024.
+
+1380
+1381
+1382
+1383
+1384
+1385
+1386
+1387
+1388
+1389
+1390
+1391
+1392
+1393
+1394
+1395
+1396
+1397
+1398
+1399
+1400
+1401
+
+Yuwen Chen, Danny Tse, Parth Nobel, Paul Goulart, and Stephen Boyd. CuClarabel: GPU acceleration for a conic optimization solver. ACM Transactions on Mathematical Software, 52(3):1–25,
+2026. doi: 10.1145/3815420. URL https://doi.org/10.1145/3815420. Preprint at
+arXiv:2412.19027.
+Patrick L. Combettes. Quasi-Fejérian analysis of some optimization algorithms. In Inherently Parallel Algorithms in Feasibility and Optimization and Their Applications, volume 8 of Studies in
+Computational Mathematics, pp. 115–152. Elsevier, 2001.
+Patrick L. Combettes. Solving monotone inclusions via compositions of nonexpansive averaged
+operators. Optimization, 53(5–6):475–504, 2004.
+Patrick L. Combettes and Bàng Công Vũ. Variable metric forward-backward splitting with applications to monotone inclusions in duality. Optimization, 63(9):1289–1318, 2014.
+Patrick L. Combettes and Isao Yamada. Compositions and convex combinations of averaged nonexpansive operators. Journal of Mathematical Analysis and Applications, 425(1):55–70, 2015.
+Laurent Condat. A primal-dual splitting method for convex optimization involving lipschitzian,
+proximable and linear composite terms. Journal of Optimization Theory and Applications, 158
+(2):460–479, 2013. doi: 10.1007/s10957-012-0245-9.
+Damek Davis and Wotao Yin. Convergence rate analysis of several splitting schemes. In Roland
+Glowinski, Stanley J. Osher, and Wotao Yin (eds.), Splitting Methods in Communication, Imaging,
+Science, and Engineering, pp. 115–163. Springer, 2016.
+
+1402
+1403
+
+Damek Davis and Wotao Yin. A three-operator splitting scheme and its optimization applications.
+Set-Valued and Variational Analysis, 25(4):829–858, 2017.
+26
+
+1404
+1405
+1406
+
+Jonathan Eckstein and Dimitri P. Bertsekas. On the Douglas–Rachford splitting method and the
+proximal point algorithm for maximal monotone operators. Mathematical Programming, 55(1–
+3):293–318, 1992.
+
+1407
+1408
+1409
+1410
+1411
+1412
+1413
+1414
+1415
+1416
+1417
+1418
+1419
+1420
+1421
+1422
+1423
+1424
+1425
+1426
+1427
+1428
+1429
+1430
+1431
+1432
+1433
+
+Ambros Gleixner, Gregor Hendel, Gerald Gamrath, Tobias Achterberg, Michael Bastubbe, Timo
+Berthold, Philipp M. Christophel, Kati Jarck, Thorsten Koch, Jeff Linderoth, Marco Lübbecke,
+Hans D. Mittelmann, Derya Ozyurt, Ted K. Ralphs, Domenico Salvagnin, and Yuji Shinano. MIPLIB 2017: Data-Driven Compilation of the 6th Mixed-Integer Programming Library. Mathematical Programming Computation, 2021. doi: 10.1007/s12532-020-00194-3. URL https:
+//doi.org/10.1007/s12532-020-00194-3.
+Google OR-Tools contributors. PDLP solver parameters: Termination check frequency. Source
+code, ortools/pdlp/solvers.proto, 2026. URL https://github.com/google/or-tools/
+blob/stable/ortools/pdlp/solvers.proto. Accessed September 6, 2026.
+Paul J. Goulart and Yuwen Chen. Clarabel: An interior-point solver for conic programs with
+quadratic objectives, 2024. URL https://arxiv.org/abs/2405.12762.
+Benjamin Halpern. Fixed points of nonexpanding maps. Bulletin of the American Mathematical
+Society, 73(6):957–961, 1967.
+Bingsheng He and Xiaoming Yuan. Convergence analysis of primal-dual algorithms for a saddlepoint problem: From contraction perspective. SIAM Journal on Imaging Sciences, 5(1):119–149,
+2012. doi: 10.1137/100814494.
+Frank Hutter, Holger Hoos, and Kevin Leyton-Brown. An efﬁcient approach for assessing hyperparameter importance. In Proceedings of the 31st International Conference on Machine Learning,
+volume 32 of Proceedings of Machine Learning Research, pp. 754–762. PMLR, 2014. URL
+https://proceedings.mlr.press/v32/hutter14.html.
+Nils-Christian Kempke and Thorsten Koch. Fix-and-propagate heuristics using low-precision ﬁrstorder LP solutions for large-scale mixed-integer linear optimization, 2025. URL https://
+arxiv.org/abs/2503.10344. ZIB Report ZR 25-04. The title term “low-precision” refers
+to termination tolerance, not to arithmetic width.
+
+1434
+1435
+1436
+1437
+1438
+
+Donghwan Kim. Accelerated proximal point method for maximally monotone operators. Mathematical Programming, 190(1–2):57–87, 2021.
+M. A. Krasnosel’skiı̆. Two remarks on the method of successive approximations. Uspekhi Matematicheskikh Nauk, 10(1):123–127, 1955.
+
+1439
+1440
+1441
+1442
+1443
+
+Ling Liang and Lei Yang. Mixed-precision GPU acceleration for large-scale minimum enclosing
+ball problems, 2026. URL https://arxiv.org/abs/2605.31425.
+Felix Lieder. On the convergence rate of the halpern-iteration. Optimization Letters, 15(2):405–418,
+2021.
+
+1444
+1445
+1446
+1447
+1448
+
+Pierre-Louis Lions and Bertrand Mercier. Splitting algorithms for the sum of two nonlinear operators. SIAM Journal on Numerical Analysis, 16(6):964–979, 1979.
+Haihao Lu and Jinwen Yang. PDOT: A practical primal-dual algorithm and a GPU-based solver for
+optimal transport, 2024. URL https://arxiv.org/abs/2407.19689.
+
+1449
+1450
+1451
+1452
+1453
+1454
+
+Haihao Lu and Jinwen Yang. cuPDLP.jl: A GPU implementation of restarted primal-dual hybrid
+gradient for linear programming in Julia. Operations Research, 73(6):3440–3452, 2025. doi:
+10.1287/opre.2024.1069. URL https://doi.org/10.1287/opre.2024.1069.
+Haihao Lu, Zedong Peng, and Jinwen Yang. MPAX: Mathematical programming in JAX, 2024. URL
+https://arxiv.org/abs/2412.09734. arXiv preprint, version 3, 18 January 2026.
+
+1455
+1456
+1457
+
+Haihao Lu, Zedong Peng, and Jinwen Yang. cuPDLPx: A further enhanced GPU-based ﬁrstorder solver for linear programming, 2025. URL https://arxiv.org/abs/2507.14051.
+arXiv preprint, version 4, 23 September 2025.
+27
+
+1458
+1459
+
+W. Robert Mann. Mean value methods in iteration. Proceedings of the American Mathematical
+Society, 4(3):506–510, 1953.
+
+1460
+1461
+1462
+1463
+1464
+1465
+1466
+1467
+1468
+1469
+1470
+1471
+1472
+1473
+1474
+1475
+
+NVIDIA Corporation. NVIDIA cuOpt user guide 26.04: LP, QP, and MILP settings. Software documentation, 2026. URL https://docs.nvidia.com/cuopt/user-guide/latest/
+lp-qp-milp-settings.html. Accessed 10 September 2026.
+Nobuhiko Ogura and Isao Yamada. Non-strictly convex minimization over the ﬁxed point set of an
+asymptotically shrinking nonexpansive mapping. Numerical Functional Analysis and Optimization, 23(1–2):113–137, 2002.
+Jisun Park and Ernest K. Ryu. Exact optimal accelerated complexity for ﬁxed-point iterations. In
+International Conference on Machine Learning, volume 162 of Proceedings of Machine Learning
+Research, pp. 17420–17457, 2022.
+Yasha Pushak and Holger Hoos. AutoML loss landscapes. ACM Transactions on Evolutionary
+Learning and Optimization, 2(3), 2022. doi: 10.1145/3558774. URL https://doi.org/10.
+1145/3558774.
+Ernest K. Ryu and Wotao Yin. Large-Scale Convex Optimization via Monotone Operators. Cambridge University Press, 2022.
+
+1476
+1477
+1478
+1479
+1480
+1481
+1482
+1483
+1484
+1485
+1486
+1487
+1488
+1489
+1490
+1491
+1492
+1493
+1494
+1495
+1496
+1497
+1498
+1499
+1500
+1501
+1502
+1503
+1504
+1505
+1506
+1507
+1508
+1509
+1510
+1511
+
+Michel Schubiger, Goran Banjac, and John Lygeros. GPU acceleration of ADMM for largescale quadratic programming. Journal of Parallel and Distributed Computing, 144:55–67, 2020.
+doi: 10.1016/j.jpdc.2020.05.021. URL https://doi.org/10.1016/j.jpdc.2020.05.
+021.
+Bartolomeo Stellato, Goran Banjac, Paul J. Goulart, Alberto Bemporad, and Stephen Boyd. OSQP:
+an operator splitting solver for quadratic programs. Mathematical Programming Computation, 12
+(4):637–672, 2020. doi: 10.1007/s12532-020-00179-2. URL https://doi.org/10.1007/
+s12532-020-00179-2.
+Bor-Yiing Su and Kurt Keutzer. clSpMV: A cross-platform OpenCL SpMV framework on GPUs.
+In Proceedings of the 26th ACM International Conference on Supercomputing (ICS ’12), pp. 353–
+364. ACM, 2012. doi: 10.1145/2304576.2304624. URL https://doi.org/10.1145/
+2304576.2304624.
+Bàng Công Vũ. A splitting algorithm for dual monotone inclusions involving cocoercive operators.
+Advances in Computational Mathematics, 38(3):667–681, 2013.
+Nina Wiedemann, Quentin Leboutet, Michael Paulitsch, Diana Wofk, and Benjamin Ummenhofer.
+KernelFoundry: Hardware-aware evolutionary GPU kernel optimization. In Proceedings of the
+43rd International Conference on Machine Learning (ICML), 2026. URL https://arxiv.
+org/abs/2603.12440. Preprint at arXiv:2603.12440.
+Rainer Wittmann. Approximation of ﬁxed points of nonexpansive mappings. Archiv der Mathematik,
+58(5):486–491, 1992.
+Michael E. Wolf and Monica S. Lam. A data locality optimizing algorithm. In Proceedings of the
+ACM SIGPLAN 1991 Conference on Programming Language Design and Implementation (PLDI
+’91), pp. 30–44. ACM Press, 1991. doi: 10.1145/113445.113449. URL https://doi.org/
+10.1145/113445.113449.
+L. Xu, F. Hutter, H. H. Hoos, and K. Leyton-Brown. SATzilla: Portfolio-based algorithm selection
+for SAT. Journal of Artiﬁcial Intelligence Research, 32:565–606, 2008. doi: 10.1613/jair.2490.
+URL https://doi.org/10.1613/jair.2490.
+Junzi Zhang, Brendan O’Donoghue, and Stephen Boyd. Globally convergent type-I Anderson acceleration for nonsmooth ﬁxed-point iterations. SIAM Journal on Optimization, 30(4):3170–3197,
+2020.
+Yunxiang Zhang, Ping Yu, Jianyu Wang, Max (Xiangjun) Fan, Julian Reed, Azalia Mirhoseini, and
+Will Su. KernelBench-Veriﬁed: Do LLM-generated kernels actually beat PyTorch?, 2026. URL
+https://arxiv.org/abs/2607.16241.
+28
+
+1512
+1513
+1514
+1515
+1516
+1517
+
+Lianmin Zheng, Chengfan Jia, Minmin Sun, Zhao Wu, Cody Hao Yu, Ameer Haj-Ali, Yida Wang,
+Jun Yang, Danyang Zhuo, Koushik Sen, Joseph E. Gonzalez, and Ion Stoica. Ansor: Generating
+High-Performance tensor programs for deep learning. In 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20), pp. 863–879. USENIX Association, November 2020. ISBN 978-1-939133-19-9. URL https://www.usenix.org/conference/
+osdi20/presentation/zheng.
+
+1518
+1519
+1520
+
+A
+
+P ROOFS FOR S ECTION 4
+
+1521
+1522
+1523
+1524
+
+Throughout this appendix the standing assumptions of the setup paragraph of Section 4 are in force.
+Because every metric H  0 makes hu, Hvi an inner product on a ﬁnite-dimensional space, all
+statements are statements about a Hilbert space, and we work directly in k · kH without rescaling.
+
+1525
+1526
+
+A.1
+
+1527
+
+Proposition 1 (Krasnosel’skiı̆–Mann convergence with a last-iterate rate). Let H  0, let T be
+θ-averaged in k · kH with θ ∈ (0, 1), and let Fix T 6= ∅. Then the iteration zk+1 = T zk converges,
+from any z0 , to some z ⋆ ∈ Fix T ; the residual kzk+1 − zk kH is nonincreasing in k; and, for every
+k ≥ 0,
+θ
+dist2H (z0 , Fix T ) .
+(5)
+kzk+1 − zk k2H ≤
+(1 − θ) (k + 1)
+
+1528
+1529
+1530
+1531
+1532
+
+C ONVERGENCE AND RATE FOR CERTIFIED ITERATIONS
+
+1533
+1534
+1535
+1536
+1537
+
+Proof. Write T = (1 − θ)I + θS with S nonexpansive in k · kH ; all norms in this proof are k · kH .
+Fix any z ⋆ ∈ Fix T . Expanding zk+1 = (1 − θ)zk + θSzk with the identity k(1 − θ)a + θbk2 =
+(1 − θ)kak2 + θkbk2 − θ(1 − θ)ka − bk2 , at a = zk − z ⋆ and b = Szk − z ⋆ , and bounding
+kSzk − z ⋆ k ≤ kzk − z ⋆ k by nonexpansiveness gives the Fejér inequality
+
+1538
+
+kzk+1 − z ⋆ k2 ≤ kzk − z ⋆ k2 −
+
+1539
+1540
+1541
+1542
+1543
+1544
+1545
+1546
+1547
+1548
+1549
+1550
+1551
+1552
+1553
+
+1−θ
+kzk+1 − zk k2 .
+θ
+
+(6)
+
+The map T is nonexpansive, so kzk+2 − zk+1 k ≤ kzk+1 − zk k. Summing (6) over the ﬁrst k + 1
+iterations, keeping only the last (smallest) residual, and minimizing over z ⋆ yields (5). By (6) the
+iterates are bounded and kzk+1 − zk k → 0, so by continuity every cluster point of (zk ) is ﬁxed by
+T ; reusing (6) with such a cluster point as z ⋆ shows kzk − z ⋆ k is nonincreasing and vanishes along
+a subsequence, hence zk → z ⋆ . This argument is the Krasnosel’skiı̆–Mann theorem with its modern
+rate (Ryu & Yin, 2022, Theorem 1); see also Krasnosel’skiı̆ (1955), Mann (1953), and Bauschke &
+Combettes (2017).
+Remark 2 (Monitored residual, normalization, and summability). The theorem controls kzk+1 −
+zk kHG , the step residual of the certiﬁed map that is actually iterated. For a genome relaxρ (G′ ) the
+compiled map is TG = (1 − ρ)I + ρTG′ , so zk+1 − zk = ρ (TG′ zk − zk ): the two residuals differ
+by the factor ρ, which matters when comparing genomes with different relaxation genes, and (5)
+divided by ρ2 bounds the unrelaxed ﬁxed-point residual kTG′ zk − zk k2HG . Summing (6) also gives
+P∞
+θG
+the summability estimate k=0 kzk+1 − zk k2HG ≤ 1−θ
+dist2HG (z0 , Fix TG ).
+G
+
+1554
+1555
+1556
+1557
+1558
+1559
+1560
+1561
+1562
+1563
+1564
+1565
+
+A.2
+
+BASE - SCHEME CERTIFICATES
+
+Lemma 1 (Base schemes). For each base scheme of Table 7 with positive stepsizes satisfying the
+gate inequality, the pair (HG , θG ) of the table, with θG = 1/(2 − cG ), together with the scheme’s
+standard decoder πG , is a construction certiﬁcate in the sense of Deﬁnition 1.
+Proof. We ﬁrst establish every row with the true norm kLk in place of ℓ, then account for the
+conservative bound.
+Since ∇f is (1/Lf )-cocoercive by the Baillon–Haddad theorem (Baillon & Haddad, 1977), the
+forward step I − α∇f is (αLf /2)-averaged for α ∈ (0, 2/Lf ), and the proximal step is 21 -averaged.
+A composition of θ1 - and θ2 -averaged maps is (θ1 + θ2 − 2θ1 θ2 )/(1 − θ1 θ2 )-averaged (Ryu &
+Yin, 2022, Theorem 27), a constant due to Ogura & Yamada (2002); see also Combettes & Yamada
+29
+
+1566
+1567
+1568
+1569
+1570
+1571
+1572
+1573
+1574
+1575
+1576
+1577
+1578
+1579
+1580
+1581
+1582
+1583
+1584
+1585
+1586
+1587
+1588
+1589
+1590
+1591
+1592
+1593
+1594
+1595
+1596
+1597
+1598
+1599
+1600
+1601
+1602
+1603
+1604
+
+(2015). At θ1 = 12 and θ2 = c it is 1/(2 − c); this is the FBS row, and the Davis–Yin row is
+the same constant
+ (Ryu & Yin, 2022, Theorem 28), established by Davis & Yin (2017). DRS is
+1
+I
++
+R
+R
+, a composition of reﬂected resolvents, hence ﬁrmly nonexpansive for every α > 0
+αA
+αB
+2
+(Ryu & Yin, 2022, §2.7), a fact going back to Lions & Mercier (1979). For the primal–dual rows,
+Mτ σ  0 exactly when τ σkLk2 < 1, and in that metric PDHG (Chambolle & Pock, 2011) is a
+proximal-point iteration on the saddle subdifferential, hence ﬁrmly nonexpansive in k · kMτ σ (Ryu &
+Yin, 2022, §3.3); see also the contraction analysis of He & Yuan (2012). Condat–Vũ (Condat, 2013;
+Vũ, 2013) is variable-metric forward–backward in the same metric (Combettes
+& Vũ, 2014), and
+
+its forward step is c-averaged in k · kMτ σ with c = τ Lf / 2(1 − τ σkLk2 ) , so composition gives
+1/(2 − c) again (Ryu & Yin, 2022, §3.3). The inequality τ Lf /2 + τ σkLk2 < 1 is equivalent, for
+τ, σ > 0, to the conjunction of τ σkLk2 < 1 and c < 1, so a single inequality delivers both (C1) and
+a positive-deﬁnite metric.
+Now let ℓ ≥ kLk be the supplied bound and let cG denote the tabulated forward-step constant
+computed from ℓ. The checked inequalities in ℓ imply the corresponding inequalities in kLk, so
+HG  0, and the true forward-step constant c computed from kLk satisﬁes c ≤ cG < 1, so the
+compiled iteration is θ-averaged with θ = 1/(2 − c). A θ-averaged map is also θ′ -averaged for every
+θ′ ∈ [θ, 1): writing T = (1 − θ)I + θS gives T = (1 − θ′ )I + θ′ S ′ with S ′ = (1 − θ/θ′ )I + (θ/θ′ )S,
+a convex combination of nonexpansive maps. Since θ = 1/(2 − c) ≤ 1/(2 − cG ) = θG < 1, the
+pair (HG , θG ) certiﬁes (C1), exactly when ℓ = kLk and conservatively otherwise.
+For (C2) and (C3), no bijection between ﬁxed points and solutions is needed; it sufﬁces that ﬁxed
+points exist and that every ﬁxed point decodes to a solution. For the primal–dual schemes the state is
+the saddle pair and, because Mτ σ  0, the ﬁxed points of the (variable-metric) proximal-point and
+forward–backward iterations are exactly the zeros of the saddle operator, i.e. the saddle set, which is
+nonempty by assumption; πG is the primal coordinate (Ryu & Yin, 2022, §3.3). For FBS and Davis–
+Yin the ﬁxed points are exactly the solutions of the associated inclusion (for Davis–Yin after applying
+the decoder πG = proxαg ), and for DRS every ﬁxed point z satisﬁes proxαg (z) ∈ X ⋆ while every
+solution arises from at least one ﬁxed point; these standard correspondences are (Ryu & Yin, 2022,
+§2.7). In each case the nonempty saddle set yields a ﬁxed point through the correspondence, giving
+(C2), and the decoder maps all of Fix TG into X ⋆ , giving (C3).
+
+ICLR TODO: Base-scheme instantiation table: for each row of
+Table 7, give the compiled state space, the exact update the
+compiler emits for problem (??) (including how FBS and DRS
+instantiate the three-term objective), the decoder, and the
+ﬁxed-point correspondence, and verify the entries against the
+implementation. Without this table, Lemma 1 certiﬁes the
+textbook operators, not yet the emitted code.
+
+1605
+1606
+1607
+1608
+1609
+1610
+1611
+1612
+1613
+
+A.3
+
+C LOSURE RULES
+
+Lemma 2 (Relaxation). Let T be θ-averaged in k · kH and let
+ ρ > 0 satisfy ρθ < 1. Then
+(1 − ρ)I + ρT is ρθ-averaged in k · kH with Fix (1 − ρ)I + ρT = Fix T .
+Proof. Writing T = (1 − θ)I + θS with S nonexpansive gives (1 − ρ)I + ρT = (1 − ρθ)I + ρθS,
+which is ρθ-averaged because ρθ ∈ (0, 1), and ρ > 0 makes the ﬁxed-point equations equivalent.
+The decoder and metric are untouched, so the certiﬁcate transports as stated in Theorem 1(ii).
+
+1614
+1615
+1616
+1617
+1618
+1619
+
+The next lemma is the certiﬁcate rule for the blend extension discussed in Appendix B. It is excluded
+from Theorem 1 because its hypothesis of a nonempty common ﬁxed-point set is semantic: the
+current gate has no syntactic test for it.
+Lemma 3 (Blends). Let T1 , T2 be θ1 - and θ2 -averaged in a common k·kH with Fix T1 ∩Fix T2 6= ∅,
+and let λ ∈ (0, 1). Then T = λT1 + (1 − λ)T2 is λθ1 + (1 − λ)θ2 -averaged in k · kH and
+Fix T = Fix T1 ∩ Fix T2 .
+30
+
+1620
+1621
+1622
+1623
+1624
+1625
+1626
+1627
+1628
+1629
+1630
+1631
+1632
+1633
+1634
+1635
+1636
+1637
+
+Proof. Write Ti = (1 − θi )I + θi Si and set θ = λθ1 + (1 − λ)θ2 . Then T = (1 − θ)I + θ λθθ 1 S1 +
+
+(1−λ)θ2
+S2 , and the bracket is a convex combination of nonexpansive maps, hence nonexpansive;
+θ
+this is the combination rule of Combettes & Yamada (2015). The inclusion Fix T ⊇ Fix T1 ∩ Fix T2
+is immediate. Conversely, let z ∈ Fix T and w ∈ Fix T1 ∩ Fix T2 . Then kz − wk ≤ λkT1 z − wk +
+(1−λ)kT2 z−wk ≤ kz−wk, so both inequalities are equalities and kTi z−wk = kz−wk for i = 1, 2;
+the Fejér inequality (6) applied to Ti at z then forces kTi z −zk = 0. Hence z ∈ Fix T1 ∩Fix T2 .
+A.4
+
+T HE H ALPERN WRAPPER
+
+Proposition 2 (Halpern genomes). Let TG carry a certiﬁcate (HG , θG , πG ) and set SG = I +
+−1
+θG
+(TG − I). Then SG is nonexpansive in k · kHG with Fix SG = Fix TG , and the compiled
+iteration
+zk+1 = λk+1 zanc + (1 − λk+1 )SG zk ,
+(7)
+P
+P
+under any admitted schedule, i.e. λk → 0, k λk = ∞, and k |λk+1 − λk | < ∞, converges to
+HG
+PFix
+TG (zanc ), the projection of the anchor onto Fix TG in k · kHG (Halpern, 1967; Wittmann, 1992).
+The canonical schedule λk+1 = 1/(k + 2) meets all three conditions and, when the wrapper anchors
+at the initial iterate (zanc = z0 ), in addition gives
+
+1638
+
+kSG zk − zk k2HG ≤
+
+1639
+1640
+1641
+
+4 dist2HG (z0 , Fix TG )
+(k + 1)2
+
+(8)
+
+(Lieder, 2021; Kim, 2021).
+
+1642
+1643
+1644
+1645
+1646
+
+Proof. SG is precisely the nonexpansive map in the averaged decomposition TG = (1 − θG )I +
+θG SG of (C1), and TG z = z if and only if SG z = z because θG > 0. Since (ZG , h·, HG ·i) is a
+Hilbert space, the cited Halpern results apply verbatim in k · kHG : convergence to the projection of
+the anchor is Wittmann (1992), and the rate (8) is Lieder (2021).
+
+1647
+1648
+1649
+1650
+1651
+1652
+
+Rate (8) is an O(1/k 2 ) bound on the same squared residual that (5) bounds at O(1/k), and it is
+exactly optimal in the following sense: Park & Ryu (2022) exhibit a matching lower bound for
+deterministic ﬁxed-point methods that access SG only through evaluations, with iterates constrained
+to the span of the anchor and past evaluations. The claim is optimality within that oracle class, not
+an unrestricted impossibility statement.
+
+1653
+1654
+1655
+1656
+1657
+1658
+1659
+
+A.5
+
+F INITE - PREFIX SWITCHING
+
+Lemma 4 (Finite-preﬁx switching). Let TB be θ-averaged in k·kH on a state space Z with Fix TB 6=
+∅, let TA : Z → Z be an arbitrary map, and ﬁx K ∈ N. Deﬁne zk+1 = TA zk for k < K and
+zk+1 = TB zk for k ≥ K. If zK is ﬁnite, then (zk ) converges to some z ⋆ ∈ Fix TB , and for every
+k ≥ K the residual bound (5) holds with z0 replaced by zK and k + 1 replaced by k − K + 1.
+
+1660
+1661
+1662
+1663
+1664
+
+Proof. For k ≥ K the sequence is exactly the certiﬁed iteration zk+1 = TB zk started at the ﬁnite
+point zK . Proposition 1 applies to this orbit and gives convergence to a point of Fix TB together with
+the rate from the new starting point. The preﬁx enters only through the constant distH (zK , Fix TB ),
+so it cannot affect the asymptotics.
+
+1665
+1666
+1667
+1668
+1669
+1670
+1671
+1672
+1673
+
+The compiler enforces the hypotheses: K is a bounded gene, and the handoff is guarded by a
+ﬁniteness check on zK . If a preﬁx produces a nonﬁnite state, the implementation starts the tail
+from the last ﬁnite state, or the initial state if necessary, and records that recovery. This recovered
+trajectory is distinct from the unrecovered preﬁx in the lemma. The rule deliberately trades any
+guarantee about the preﬁx for total freedom in choosing it: TA needs no certiﬁcate, no error budget,
+and no per-step monitor, in contrast to summable-error analyses of inexact Krasnosel’skiı̆–Mann
+iterations (Combettes, 2001; 2004), inexact Douglas–Rachford and ADMM (Eckstein & Bertsekas,
+1992), and safeguarded Anderson acceleration (Zhang et al., 2020), which admit perturbations at
+every iteration at the price of a per-step error test.
+31
+
+1674
+1675
+1676
+1677
+1678
+1679
+1680
+1681
+1682
+1683
+1684
+1685
+1686
+1687
+
+B
+
+AVERAGED BLENDING
+
+The extended genome can represent avg(λ; T1 , T2 ) = λT1 +(1−λ)T2 . For averaged maps in a common metric with a nonempty common ﬁxed-point set, Lemma 3 gives the blended certiﬁcate (Ryu
+& Yin, 2022; Combettes & Yamada, 2015). The current gate admits restricted cases: compatible
+FBS parents can use different steps, DRS/Davis–Yin parents must preserve the auxiliary ﬁxed-point
+encoding through identical steps, and saddle parents require identical (τ, σ) so their metric and saddle encoding agree. The common ﬁxed-point condition remains a semantic mathematical obligation;
+the checker is not a general decision procedure for that property.
+Blending lies outside the grammar of Theorem 1 and is not used in the hardware factorial. In the
+standard LP saddle instantiation, PDHG and Condat–Vũ with identical parameters are the same
+map, so blending those parents adds no mathematical variation. The expression contains two parent
+evaluations, but actual execution cost depends on compiler elimination and fusion and must be
+measured. We make no empirical discovery claim for this extension in the current evaluation.
+
+1688
+1689
+
+C
+
+I NSTANTIATION OF THE CERTIFICATES IN THE COMPILER
+
+1690
+1691
+1692
+1693
+1694
+1695
+1696
+1697
+1698
+1699
+1700
+1701
+1702
+1703
+1704
+
+This appendix connects Lemma 1 to the emitted code. For each base scheme of Table 7 it records
+how the compiler decomposes problem (??), the compiled state space ZG and metric HG , the exact update the compiler emits, the decoder πG , the ﬁxed-point correspondence, and the certiﬁcate
+condition the gate checks (extracted verbatim, up to LaTeX conversion, from the typing rules in the
+implementation). The compiler dispatches on the shape of the composite: FBS and DRS instantiate
+the three-term objective either on a primal two-block form or, when h is composed with L, on the
+dual problem
+min f ∗ (−L⊤ u) + h∗ (u),
+(9)
+u
+
+which requires g = 0 and f to be µ-strongly convex, so that F = f ∗ ◦ (−L⊤ ) is (ℓ2 /µ)-smooth
+and ∇f ∗ is single-valued; the implemented strongly convex atoms have afﬁne ∇f ∗ , which the
+dual updates below use. PDHG and Condat–Vũ instantiate the saddle form directly, and Davis–
+Yin requires the three-block form without L. A structurally inapplicable (problem, scheme) pair
+is rejected by the gate as a certiﬁed construction failure. Table 22 summarizes; the updates and
+correspondences follow, one block per scheme.
+
+1705
+1706
+1707
+1708
+1709
+1710
+1711
+1712
+
+scheme
+
+decomposition
+
+state ZG
+
+HG
+
+FBS
+f smooth + one prox block
+primal x
+I
+FBS
+dual (9)
+dual u
+I
+DRS
+g prox + h prox (f = 0, no L)
+auxiliary z
+I
+DRS
+dual (9)
+auxiliary z
+I
+PDHG
+one prox block φ + h(Lx)
+saddle (x, u) Mτ σ
+Condat–Vũ f smooth + g prox + h(Lx)
+saddle (x, u) Mτ σ
+Davis–Yin f smooth + g prox + h prox (no L) auxiliary z
+I
+
+update decoder πG
+(10)
+(11)
+(12)
+(13)
+(14)
+(15)
+(16)
+
+x
+∇f ∗ (−L⊤ u)
+proxαg (z)
+∇f ∗ (−L⊤ proxαh∗ (z))
+x
+x
+proxαg (z)
+
+1713
+1714
+1715
+1716
+
+Table 22: Instantiation of the certiﬁcates of Table 7 in the compiler, per base scheme and accepted
+decomposition of problem (??). Mτ σ is the primal–dual metric of Table 7; on the dual instantiations
+the FBS/DRS certiﬁcate is evaluated with the dual smoothness constant LF = ℓ2 /µ in place of Lf .
+
+1717
+1718
+1719
+1720
+1721
+1722
+1723
+1724
+1725
+1726
+1727
+
+FBS. Primal form (L absent, exactly one nonzero prox block p ∈ {g, h}):
+
+xk+1 = proxαp xk − α∇f (xk ) .
+Dual form (9) (with ∇f
+
+∗
+
+(10)
+
+afﬁne, so ∇F (u) = µ1 LL⊤ u − L∇f ∗ (0)):
+
+
+
+uk+1 = proxαh∗ uk − α µ1 LL⊤ uk − L∇f ∗ (0) .
+
+(11)
+
+Certiﬁcate condition (from the typing rules): 0 < α < 2/Lf , evaluated with Lf on the primal
+form and LF = ℓ2 /µ on the dual form. Fixed-point correspondence: on the primal form Fix T =
+X ⋆ ; on the dual form ﬁxed points are the dual solutions, and πG (u) = ∇f ∗ (−L⊤ u) recovers
+the unique primal solution (strong convexity of f ). On the TV form the decoder specializes to
+x = y − L⊤ clip(u; [−λ, λ]).
+32
+
+1728
+1729
+1730
+1731
+1732
+1733
+1734
+1735
+1736
+1737
+1738
+
+DRS. Primal two-prox form (f = 0, L absent):
+xkg = proxαg (zk ),
+xkh = proxαh (2xkg − zk ),
+zk+1 = zk + xkh − xkg .
+(12)
+∗
+Dual form (9) with A = ∂h and B = ∇F : JαA = proxαh∗ , and because ∇f ∗ is afﬁne the
+resolvent JαB is the exact linear solve
+−1
+
+
+⊤
+uk = proxαh∗ (zk ), wk = I + α
+2uk − zk + αL∇f ∗ (0) , zk+1 = zk + wk − uk ,
+µ LL
+(13)
+computed by conjugate gradients to relative residual 10−12 . Certiﬁcate condition: 0 < α < ∞.
+Fixed-point correspondence: every ﬁxed point z decodes to a solution through the resolvent
+(proxαg (z) on the primal form, the dual solution proxαh∗ (z) then ∇f ∗ (−L⊤ ·) on the dual form),
+and every solution arises from at least one ﬁxed point.
+
+1739
+1740
+1741
+1742
+1743
+1744
+1745
+1746
+1747
+1748
+1749
+1750
+1751
+1752
+1753
+1754
+1755
+1756
+1757
+1758
+1759
+1760
+1761
+1762
+1763
+1764
+1765
+1766
+1767
+
+PDHG. The primal block φ is f or g (whichever is nonzero), or, when f is afﬁne and g is
+prox-friendly, the exact combined block φ = f + g through the linear-tilt identity proxτ (q+p) =
+proxτ p ◦ proxτ q for afﬁne q; this is how the standard-form LP block hc, xi + Ix≥0 compiles to
+max(x − τ c, 0). The emitted update is
+
+
+xk+1 = proxτ φ xk − τ L⊤ uk ,
+uk+1 = proxσh∗ uk + σL(2xk+1 − xk ) .
+(14)
+Certiﬁcate condition: τ > 0, σ > 0, τ · σ · ℓ2 < 1. Fixed points are the saddle points of the (φ, h, L)
+Lagrangian; πG is the primal coordinate.
+Condat–Vũ.
+
+xk+1 = proxτ g xk − τ ∇f (xk ) − τ L⊤ uk ,
+
+
+uk+1 = proxσh∗ uk + σL(2xk+1 − xk ) . (15)
+
+Certiﬁcate condition: τ · Lf /2 + τ · σ · ℓ2 < 1. Fixed points are the saddle points of problem (??);
+πG is the primal coordinate. With Lf = 0 the update and its condition reduce exactly to PDHG,
+which the LP instantiation exercises.
+Davis–Yin.
+
+xkg = proxαg (zk ),
+xkh = proxαh 2xkg − zk − α∇f (xkg ) ,
+zk+1 = zk + xkh − xkg . (16)
+Certiﬁcate condition: 0 < α < 2/Lf . Fixed points correspond to solutions through πG (z) =
+proxαg (z).
+Wrapper genes. The wrappers compile to state-space transformations of the certiﬁed map TG ,
+exactly as certiﬁed: relaxation emits zk+1 = (1 − ρ)zk + ρ TG zk (Lemma 2); the Halpern gene
+emits
+zk+1 = jk1+2 zanc + jjkk +1
+(17)
++2 TG zk ,
+where jk counts iterations since the last anchor reset and the restart gene resets zanc to the current
+iterate and jk to zero every kr iterations. The compiled anchor combination is applied to TG itself,
+which is nonexpansive by (C1), rather than to the normalized map SG of Proposition 2; the proposition applies with TG in the role of the nonexpansive map when no anchor restarts are used. It does
+not automatically give the same projection or rate for periodically restarted trajectories.
+
+1768
+1769
+1770
+1771
+1772
+1773
+1774
+1775
+1776
+1777
+1778
+1779
+1780
+1781
+
+Machine check. The correspondence between this table and the emitted code is checked numerically, not formally proved: tests/test_compiler_equivalence.py holds an independent reference implementation of every update above (plain NumPy, double precision, written directly from the formulas, sharing no code with the compiler) and asserts agreement with the compiled iteration iterate-byiterate for 50 iterations on 3 random small problems per scheme, drawn from a TV 16 × 16 instance,
+a tiny netﬂow LP, and random dense composites, at relative tolerance 10−10 in the maximum norm,
+for the full solver state and the decoded primal iterate. The battery covers the plain map, the production genome-to-phenotype path, and each wrapper gene (relaxation, Halpern, Halpern with ﬁxed-k
+restart). The largest deviation observed at generation time was 5.0×10−13 (DRS dual form, where
+the reference solves the resolvent system exactly while the compiled path runs conjugate gradients to
+10−12 ); per scheme: FBS 7.1×10−17 , DRS 5.0×10−13 , PDHG 7.5×10−16 , Condat–Vũ 6.9×10−16 ,
+Davis–Yin 1.8 × 10−16 . This appendix is generated by scripts/gen_instantiation_table.py, which
+extracts the certiﬁcate conditions from the typing rules, veriﬁes every display equation against literal fragments of the builder source, and refuses to regenerate if a scheme is added to the compiler
+without a corresponding entry and reference implementation.
+33
+
+

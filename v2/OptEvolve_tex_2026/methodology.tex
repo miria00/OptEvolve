@@ -1,0 +1,129 @@
+% ---------------------------------------------------------------------
+% methodology.tex -- the extended genome, the rediscovery argument, and
+% the hardware layer.  \input at the end of 3-methods.tex.
+% Style rule: never use the em-dash.
+% ---------------------------------------------------------------------
+
+\subsection{An exact-path lasso solver as a search-space example}
+\label{sec:method:rediscover}
+
+Reachability is not rediscovery: the expert's decisions must be expressible
+as mutations, and the fitness must make their effects visible. An exact-path
+lasso solver illustrates this design. Each of the four decisions in
+Table~\ref{tab:rediscover} becomes a mutation of one layer.
+
+\begin{table}[htbp]\centering\footnotesize
+\caption{The four decisive steps of an expert derivation, each reachable
+as a single typed mutation. D3 and D4 are visible to any wall-clock
+fitness; D5 and D6 are not, which is the reason the fitness changes.}
+\label{tab:rediscover}
+\begin{tabular}{@{}p{1.42cm}p{1.24cm}p{3.05cm}p{3.30cm}p{3.04cm}@{}}
+\toprule
+Step & Layer patched & The mutation & Gate rule that keeps it honest &
+Why the fitness sees it \\
+\midrule
+D3 carry the factorization &
+3 state &
+\texttt{factorization.\allowbreak update}: refactorize to insert\_\allowbreak delete &
+drift check on the maintained factor &
+per-step cost, visible immediately \\
+\addlinespace
+D4 free screening bound &
+4 restrict &
+\texttt{rule}: none to equiangular\_\allowbreak bound &
+admitted only if provably safe, or paired with a full re-admission pass,
+checked statically &
+step-count identity proves exactness, so the win is pure \\
+\addlinespace
+D5 hybridize &
+5 handoff &
+\texttt{handoff}: null to \{to: working\_\allowbreak set, predicate\} &
+the existing switch\_k rule generalized: exact prefix exempt, tail passes
+the full gate &
+neither engine dominates, so only a sweep shows it \\
+\addlinespace
+D6 measure, do not bound &
+5 handoff &
+\texttt{predicate.\allowbreak source}: bound to counted &
+none needed; it is a source swap &
+only oracle regret on a sweep sees it \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The D6 decision illustrates why fitness matters. The gene value
+$\texttt{source} \in \{\text{bound}, \text{fitted}, \text{probe},
+\text{counted}\}$ is an enumeration, so swapping it is a legal single
+mutation. Under a wall-clock fitness, the negated shifted geometric mean
+of time-to-certificate over a training set, \texttt{bound} looks fine,
+because it is calibrated on the instance where the bound is tight. Under
+regret against a per-problem oracle across $54$ shape-and-grid
+combinations at two thread counts, \texttt{bound} costs $14\times$ to
+$19\times$ and \texttt{counted} costs $1.10\times$ with a worst case of
+$1.64\times$. The same mutation gets opposite verdicts under the two
+fitness measures; the chosen fitness thus determines which predicate a search
+would favor.
+
+The example shows how an expert's four-step derivation can be expressed as
+four single mutations; it does not show that a search run rediscovered them.
+An ablation of that discovery claim would withhold the four decisive gene-pool
+cards, compare LLM mutation without a gene pool, and run a random proposer
+over the same typed space. SimpleTES \citep{Ye2026StructuredScaling} is another
+algorithm-discovery system with a lasso-path solver and offers an external
+comparison target.
+
+\subsection{Where hardware kernel fusion comes in}
+\label{sec:method:hardware}
+
+Fusion is layer~8, and layer~8 is not a post-processing step applied to
+the winning algorithm. It is one of three hardware genes, all set from the
+same quantity, the work per step of whatever inner loop layers~1
+through~6 produced.
+
+\begin{table}[htbp]\centering\footnotesize
+\caption{The three hardware genes. Each has a GPU form and a CPU form, and
+each has a measured cliff, which is what distinguishes a gene from an
+environment default.}
+\label{tab:hwgenes}
+\begin{tabular}{@{}p{1.42cm}p{1.95cm}p{3.35cm}p{2.35cm}p{2.95cm}@{}}
+\toprule
+Gene & Question & GPU form & CPU form & The cliff that proves it is a gene \\
+\midrule
+7 admission &
+cross the device at all? &
+streamed bytes against the bandwidth difference, decided before touching
+the runtime &
+stay &
+importing the runtime costs more than a small solve \\
+\addlinespace
+8 width &
+how much work per launch or barrier? &
+fusion tile: $T$ iterations per launch on a $(B{+}2T)^2$ tile with halo in
+shared memory &
+BLAS thread count from work per step &
+the wrong device's tile costs $1.06\times$ to $1.63\times$; $64$ threads
+instead of $16$ costs $103\times$ \\
+\addlinespace
+6 contract &
+what precision, and where &
+per-expression fastmath scope &
+same &
+fastmath on a Schur complement turned a $10^{-14}$ certificate into
+$10^{-2}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The fusion tile and the thread count are the same gene at two
+granularities. Both answer how wide the parallel region should be relative
+to the work the algorithm gives it, both are read off the device profile,
+and both have a cliff when set by an environment default instead of by the
+algorithm. That is what makes the RTX~4090 against H100 tile result and
+the $16$ against $64$ thread result one finding rather than two anecdotes.
+
+Algorithm~\ref{alg:optevolve} closes the loop by feeding the measured
+$t(\mathrm{operator},\mathrm{device})$ back into the layer-5 routing
+predicate. A better fused tile lowers $t$ for an iterative candidate and
+moves the crossover at which it beats another algorithm. Hardware choice
+therefore changes the route, not just the cost of a fixed solver
+(Equation~\ref{eq:costmodel}).

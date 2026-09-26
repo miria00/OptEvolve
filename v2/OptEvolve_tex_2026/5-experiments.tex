@@ -1,0 +1,321 @@
+\section{Experiments}
+\label{sec:experiments}
+
+We test whether checked search improves a base scheme, whether evolved formulations and operators beat available engines, and whether routing generalizes to held-out instances. Detailed settings, per-device sweeps, and further losses are in Appendix~\ref{app:experiments} and the companion experiment log.
+
+\subsection{Evaluation protocol}
+\label{sec:exp:protocol}
+Every route and competitor must satisfy the same check on the \emph{original} problem: relative constraint violation and objective gap, normalized by $1+|f^\star|$, are each at most the target tolerance; $f^\star$ is a high-accuracy reference computed outside timing. The comparison field includes generic LP/QP/conic engines and recognized specialists such as coordinate descent for lasso, LIBLINEAR/LIBSVM for SVM, and network simplex for transport. Each engine runs at its shipped default settings, so what is reported is the solver a practitioner actually gets. Head-to-head timings include detection, formulation, compilation, and solve in a fresh process with compilation cache disabled, except CUDA context creation; the comparison engines likewise use fresh processes. Held-out routing has a 20\,s budget, with exploration charged on first visits. Machines and warm-versus-cold conventions are specified in Appendix~\ref{app:experiments}.
+
+\subsection{What checked evolution changes}
+\label{sec:exp:evolve}
+\label{sec:results}
+On anisotropic total-variation denoising of held-out retinal OCT patches, the certified evolved Condat--V\~u scheme takes $0.073$\,s geometric-mean time to the target duality gap, against $0.621$\,s for its certified textbook default. Random and LLM proposals tie on held-out time, so this is an internal scheme-tuning result, not evidence that the LLM beats random search or an external TV specialist. On box--hyperplane projection, a contract-tested synthesized implementation is $3.16\times$ faster per call than classical breakpoint search on the RTX~4090; the still-faster unchecked LLM implementation passes only $1/17$ contract clauses. Solvers using the tested implementation meet the target on $9/9$ unseen instances versus $5/9$ for the unchecked one. The contracts screen numerical code, not prove its exactness. Full ablations and per-call times are in Appendix~\ref{app:experiments}.
+
+\subsection{Wins, losses, and routing}
+\label{sec:exp:specialists}
+\label{sec:exp:general}
+Table~\ref{tab:headline} gives cold first-solve comparisons with the fastest accepted engine in the completed field. Budget-constrained least squares has no packaged specialist; OptEvolve builds a relocated formulation and synthesized projection that beat the available generic engines. The same router misjudges some families: PIQP and celer win on the budget band and group lasso. A large-scale comparison against Clarabel also favors evolved formulations on SVM dual and portfolio instances, but only where Clarabel is the strongest available engine; the qualified comparisons and intervals are in Appendix~\ref{app:experiments}.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{llrr}
+\toprule
+held-out instance & fastest accepted engine & ours, cold (s) & speedup \\
+\midrule
+budget LS, $n=12{,}000$ & Clarabel & 1.04 & $4.49\times$ \\
+budget LS, $n=48{,}000$ & Clarabel & 8.10 & $25.22\times$ \\
+robust LP, $n=5{,}000$ & Clarabel & 1.77 & $8.86\times$ \\
+budget band, $n=80{,}000$ & PIQP & 1.33 & $0.24\times$ \\
+group lasso, $n=10{,}000$ & celer & 1.02 & $0.56\times$ \\
+\bottomrule
+\end{tabular}
+\caption{Chosen routes versus the fastest accepted engine at $10^{-4}$, RTX~4090 host; cold first solve with no persistent compile cache, five paired repetitions. Speedups are paired geometric means; other tolerances, intervals, and the SVM route at parity are in Table~\ref{tab:specialists}, Appendix~\ref{app:experiments}. CUDA context creation (about $0.22$\,s) is excluded.}
+\label{tab:headline}
+\end{table}
+
+\paragraph{Where the speedup comes from.}
+On budget-constrained least squares at $n=12{,}000$ and tolerance $10^{-4}$,
+constraint relocation with a hand-written Newton projection is already
+$3.7\times$ faster than the best available engine. Holding the formulation
+fixed, the synthesized projection makes the cold first solve a further
+$1.16\times$--$1.29\times$ faster than the hand-written version across
+tolerances $10^{-3}$--$10^{-6}$. The formulation accounts for most of this
+family's gain; faster projection calls also improve end-to-end time, but
+per-call speedups are not solver speedups (Appendix~\ref{app:experiments}).
+
+\subsection{Six problem classes, against packaged solvers at their defaults}
+\label{sec:exp:regimes}
+
+The families above are generated. This section is the opposite: six classes
+drawn from published benchmarks and clinical data, each with whatever
+packaged solver a practitioner would actually reach for, run \textbf{at its
+shipped defaults}. No competitor's tolerance is tightened, no competitor's
+inner loop is rewritten, and nothing is tuned on a competitor's behalf, so
+every margin below is what a user gets rather than what a benchmark can be
+made to say.
+
+\begin{table}[htbp]\centering\footnotesize
+\caption{Six classes, measured. Times are to a certified target under the
+acceptance check of Section~\ref{sec:exp:protocol}; baselines run at shipped
+defaults. ``never'' means the solver did not reach the target at all within
+the stated budget. On the two per-column separable classes, unmixing and
+deconvolution, our times are measured over the whole batch while the packaged
+solvers are timed on a subset and reported at their measured per-column rate:
+$40$ of $47{,}750$ pixels for unmixing and $300$ of $10{,}000$ samples for
+deconvolution. Those baseline totals are therefore rates scaled to the batch,
+exact for a separable problem but not wall clocks. SUnSAL's $9{,}000$\,s is a
+measured wall clock at its time cap.}
+\label{tab:regimes}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{@{}p{2.5cm}p{3.0cm}p{2.6cm}p{4.3cm}p{1.9cm}@{}}
+\toprule
+class & data & ours & baselines, shipped defaults & margin \\
+\midrule
+Simplex-constrained least squares &
+AVIRIS Cuprite, $188\times47{,}750$, $498$-signature library &
+$10^{-4}$ in $\mathbf{53.3}$\,s (H100), $165.3$\,s (4090) &
+SUnSAL $9{,}000$\,s, worst $1.19\mathrm{e}{-}3$, \textbf{never}; Clarabel
+$30{,}379$\,s; ECOS $22{,}864$\,s; SCS $5{,}654$\,s never; OSQP
+$14{,}117$\,s never &
+$\mathbf{570\times}$ \\
+\addlinespace
+Cell-type deconvolution &
+LM22 ($547\times22$) and TIL10, $10{,}000$ samples &
+$10^{-8}$ in $\mathbf{1.31}$\,s for all $10{,}000$, RMSE $0.0051$ &
+CVXPY-Clarabel $4.73$\,s for $300$ samples, $0.0158$\,s per sample;
+\texttt{scipy.nnls} violates sum-to-one by $2.2\mathrm{e}{-}2$ &
+$\mathbf{120\times}$ per sample \\
+\addlinespace
+Isotropic TV denoising &
+DIV2K; clinical OCT; clinical CT &
+OCT $256^2$: $10^{-4}$ in $\mathbf{0.16}$\,s, $10^{-8}$ in $10.16$\,s &
+scikit-image $0.023$\,s but gap $1.7\mathrm{e}{-}2$: reaches
+\textbf{no target at any size} &
+reachability \\
+\addlinespace
+Isotropic TV deblurring &
+DIV2K, $128^2$ to $1024^2$ &
+$10^{-3}$ in $\mathbf{0.74}$\,s ($128^2$) and
+$\mathbf{0.57}$\,s ($256^2$) &
+no packaged solver exists; CVXPY-SCS $118.6$\,s and $1{,}063.9$\,s,
+landing at $8.4\mathrm{e}{-}3$ and $1.6\mathrm{e}{-}3$, so it reaches
+\textbf{neither} target &
+$>160\times$, $>\mathbf{1{,}870\times}$ \\
+\addlinespace
+TV-Poisson deconvolution &
+Poisson counts, peak $100$ photons &
+$256^2$: $10^{-8}$ in $\mathbf{2.87}$\,s &
+no packaged solver; \texttt{richardson\_lucy} solves a different objective &
+empty field \\
+\addlinespace
+Batched QP layers &
+OptNet form, $n{=}64..256$, $B{=}1024..16{,}384$ &
+$\mathbf{0.0029}$\,s warm ($n{=}64$); $0.0253$\,s ($n{=}256$) &
+\texttt{qpth} $0.188$\,s and $2.372$\,s, both at machine precision &
+$65\times$ to $\mathbf{94\times}$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\paragraph{What carries the margin.} In every case it is the formulation
+gene rather than a faster kernel. On the unmixing and deconvolution classes
+the constraint set is a simplex, so relocating it into $g$ leaves an $f$ whose
+proximal map is \emph{one} inverse shared by all $47{,}750$ pixels or
+$10{,}000$ samples; a first-order method on the same problem cannot use that
+factorization and needed more than $10^5$ iterations where the relocated form
+needs thousands. On the batched QP layers the same move shares one
+factorization across the batch where an interior-point method rebuilds a KKT
+system per element, which is why the margin \emph{grows} with dimension,
+$65\times$ at $n=64$ to $94\times$ at $n=256$. On the Poisson class the
+formulation is forced rather than chosen: the data term has no Lipschitz
+gradient, so the smooth-plus-proximable split is inapplicable and the term
+must go behind the linear map.
+
+\paragraph{Can the LLM assemble the unmixing method?} In a separate executable
+recovery assay with the expert recipe withheld, the frozen-Qwen loop assembled
+the paper's direct-ADMM/shared-factor/GPU/retirement/screened-check composition
+on its sixth fresh candidate. The frozen program passed all nine sealed
+certification runs and three full-image scale replays. An online LinUCB
+proposal-channel pilot reached an ADMM-equivalent DRS composition on its
+fourth fresh candidate in one seed, but uniform random also reached a
+semantic hit and passed all nine sealed checks in a separate seed, and the bandit was worse on the
+deconvolution application shift. These are measured recovery results, not
+evidence that RL improves discovery across classes or devices; the full
+fixed-budget controls and first-hit traces are in Appendix~\ref{app:llm-loop}.
+
+\paragraph{Where the classes lose.} Two, and both are reported rather than
+excluded. On unmixing at $10^{-8}$ Clarabel certifies and we do not: one
+degenerate pixel of $47{,}750$ holds the worst-case gap at $10^{-5}$. On the
+QP layers a cold first call is a loss, $0.35$\,s for \texttt{qpth} against
+roughly $2.3$\,s of compilation for us; the $65\times$ to $94\times$ is the
+warm repeat, which is the regime a differentiable layer actually runs in, and
+both belong in the table.
+
+\paragraph{Accuracy, not speed, is the decisive axis on half the table.} At
+their shipped defaults scikit-image's TV solver reaches none of the accuracy
+targets at any image size, \texttt{scipy.nnls} does not satisfy the equality
+constraint at all, and CVXPY-SCS lands at $8.4\mathrm{e}{-}3$ and
+$1.6\mathrm{e}{-}3$ on deblurring, short of the target at both sizes. None of
+the three is slow; each stops early or solves a relaxation. A comparison that
+read only wall-clock would record the first two as wins and would report a
+finite speedup for the third, when the honest statement is that the target was
+never reached. This is the case for scoring by a recomputed certificate rather
+than by a solver's own stopping rule, and it is why the margins for those rows
+are reachability statements or lower bounds.
+
+\subsection{An exact-path lasso solver, and what it takes to reach it}
+\label{sec:exp:lasso}
+
+The families above are ones where an evolved route wins. This one is the
+opposite test: a family where a strong specialist already exists, built by
+hand, and the question is whether the search space contains it.
+
+\paragraph{The solver.} The lasso regularization path is piecewise linear in
+$\lambda$, so an exact traversal returns every requested grid point inside a
+segment by interpolation rather than by solving. Four decisions carry it. The
+factorization of $X_A^\top X_A$ is maintained across the whole path by
+Cholesky update and downdate rather than refactorized, drifting
+$9.5\times10^{-16}$ over $300$ interleaved insert and delete operations. The
+entering-variable scan is screened by a bound that is free because it reuses
+$G_{AA}d = s$, the equation that defines the direction, and is exact: the
+traversal visits the identical sequence of breakpoints, asserted on step
+counts. The traversal hands its tail to a working-set engine at a predicate
+obtained by writing out both costs, where $n$ and $p$ cancel and the decision
+reduces to the active-set size against a multiple of the grid size. And that
+active-set size is obtained by counting variables as they enter rather than by
+bounding the support with $\min(n,p)$.
+
+\paragraph{Measured against a completed field.} These lasso measurements are
+reported in companion work by a subset of the authors and are restated here
+with their protocol \citep{OptiVault2026Lasso}; they were not produced by the
+search loop of this paper. On all $70$ LIBSVM regression datasets that loaded
+as single-target regressions, at five accuracy targets, against $15$ libraries
+spanning six algorithm classes, scored by time to a recomputed duality gap
+rather than any solver's own stopping rule, the solver is $2.92\times$ faster
+in geometric mean than the best of those $15$ on each individual instance, and
+$3.25\times$ when a GPU is allowed. The margin grows with the target, from
+$1.72\times$ at $10^{-4}$ to $5.15\times$ at $10^{-12}$, which is the signature
+of an exact method against iterative ones.
+
+Reachability is the stronger claim, and it is the axis this paper argues for.
+It certifies $349$ of $350$ (dataset, target) cells where the best single
+baseline certifies $290$, and every baseline has a region of the accuracy range
+it cannot enter at any tolerance setting. Taken one library at a time, eleven
+of the fourteen never win a single cell, and on $53$ of the $70$ datasets no
+baseline wins at any accuracy target. Against SimpleTES
+\citep{Ye2026StructuredScaling}, a C++ path solver produced by AI-driven
+program search and the strongest single competitor in that field, it is
+$3.55\times$ faster on SimpleTES's own $17$-problem benchmark under SimpleTES's
+own protocol, single threaded. We quote that figure rather than the
+$4.11\times$ measured on the same suite under heavier machine load, or the
+$5.53\times$ measured with threads matched at $16$, because the ratio is
+load-dependent and the quietest measurement is the one that flatters us least.
+On the scale suite the same comparison is a loss at one thread, $0.87\times$,
+and a win at sixteen, $1.33\times$.
+
+\paragraph{Why it belongs here.} Each of the four decisions is a single
+mutation of one layer of the genome of Section~\ref{sec:method:rediscover}:
+the state layer for the carried factorization, the restrict layer for the
+screening bound, and the handoff layer twice, once for the predicate and once
+for the source of the quantity it tests. The gate has a rule for each, so none
+of them can be taken unsoundly: a screening rule is admitted only if it is
+provably safe or paired with a full re-admission pass, and the handoff reuses
+the finite-prefix rule of Section~\ref{sec:mixing}, exact prefix exempt and
+tail fully gated.
+
+It belongs here for a second reason. The solver was not produced by a lone
+derivation but by a registry of algorithm cards and transformations consulted
+while building it, which is the same object as the gene pool of
+Section~\ref{sec:routing}: the single largest step in that work, worth
+$2.40\times$ to $3.33\times$ and larger than any kernel change, came from a
+stored card stating that a correct bound is not an estimate of the quantity it
+bounds, applied to a routing rule that had been using $\min(n,p)$ as a stand-in
+for the active-set size \citep{OptiVault2026Lasso}. That is a gene pool entry
+changing a routing predicate, which is the mechanism this paper claims. What
+the lasso family supplies is the hardest target for that mechanism; what
+Appendix~\ref{app:llm-loop} supplies is executable evidence that the mechanism
+runs, on a different class, with the decisive hints withheld.
+
+\paragraph{What is not claimed.} The loop did not find this solver, and no
+search in this paper was run on the lasso path at all. The derivation was taken
+by hand, and what we establish here is
+\emph{reachability}: every step is expressible as a typed mutation that the
+gate admits, and the last of the four is invisible to a wall-clock fitness and
+visible to regret against a per-problem oracle, which is why the fitness of
+Section~\ref{sec:loop} is the one it is. Whether the search reaches it inside
+a realistic budget is open. The ablation that would settle it for this
+family, withholding these four lasso cards, is not run; the withheld-card
+ablation of Appendix~\ref{app:llm-loop} concerns the unmixing class and a
+different set of four hints, and does not speak to the lasso path. The timings are measured on
+the solver's own host at a median load average of $15.8$ on a shared
+$64$-core machine, with a worst single-cell drift of $4.50\times$ between
+passes, so they are claimed as ratios within a dataset and not as absolute
+times.
+
+\subsection{Held-out generalization and system ablations}
+\label{sec:exp:llm}
+Across $28$ held-out QP, LP, and SOCP instances at $10^{-3}$, the full system solves $27$ within 20\,s, versus $26$ for the best-per-instance oracle over the \emph{completed competitor field}, $25$ for its strongest single engine, and $18$ for an LLM-only evolved operator in a fixed pipeline. The LLM-only arm uses the same LLM and search engine, but lacks the certificate, gene pool, and router; these components are not individually isolated by that comparison. The router without an agent session solves $26$. On $25$ instances both the full system and the completed-field oracle solve, repeat visits have a $1.29\times$ geometric-mean speedup, while first visits have $0.035\times$ because they pay for exploration. Table~\ref{tab:llm} gives per-arm means over each arm's own solved instances; the $1.29\times$ and $0.035\times$ comparisons above use only jointly solved instances.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+ & solved (of 28) & geo.\ first visit (s) & geo.\ repeat (s) \\
+\midrule
+full system (LLM agent + gene pool + router) & \textbf{27} & 1.204 & 0.0374 \\
+router without the agent session & 26 & 1.163 & 0.0284 \\
+LLM-only evolved operator, fixed pipeline & 18 & 1.066 & 0.8625 \\
+\midrule
+best-per-instance oracle, completed field & 26 & -- & 0.0441 \\
+best single engine (Clarabel) & 25 & -- & 0.0839 \\
+\bottomrule
+\end{tabular}
+\caption{Held-out solve rate at tolerance $10^{-3}$ with a 20\,s budget, RTX
+4090. Geometric means are over each row's own solved instances.}
+\label{tab:llm}
+\end{table}
+
+\paragraph{Three architectures, and the tile is not monotone in capability.}
+The temporally fused kernel was swept on three devices spanning consumer and
+datacenter parts. The number of admissible tiles tracks opt-in shared memory
+per block monotonically ($101{,}376$, ${\approx}163{,}840$ and $232{,}448$
+bytes admit $17$, $23$ and $24$ of the $21$-to-$24$ candidate tiles), which is
+the mechanism rather than a correlation. The \emph{choice}, however, is not
+monotone: the A100 sits between the other two on both shared memory and
+float64 rate yet takes the largest gain at every size, and it disagrees with
+the H100 at three of four sizes as well as with the RTX 4090 at all four. A
+selector that read device capability as a scalar would get this wrong.
+
+\begin{table}[htbp]\centering\footnotesize
+\caption{Best temporally fused tile $(B,T)$ and its gain over the unfused
+CUDA step, per device, three repetitions. The devices agree at one cell of
+twelve.}
+\label{tab:tiles3}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{RTX 4090 (sm\_89, 17 tiles)} &
+   \multicolumn{2}{c}{A100 (sm\_80, 23)} &
+   \multicolumn{2}{c}{H100 (sm\_90, 24)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+size & tile & gain & tile & gain & tile & gain \\
+\midrule
+$128$ & $(8,4)$  & $1.619\times$ & $(16,8)$ & $2.865\times$ & $(16,8)$ & $2.521\times$ \\
+$256$ & $(24,4)$ & $1.482\times$ & $(32,8)$ & $2.430\times$ & $(16,8)$ & $2.330\times$ \\
+$384$ & $(24,4)$ & $1.270\times$ & $(40,8)$ & $2.098\times$ & $(24,8)$ & $1.883\times$ \\
+$496$ & $(32,4)$ & $1.337\times$ & $(56,4)$ & $1.934\times$ & $(32,8)$ & $1.792\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The RTX 4090 never selects $T=8$ and both datacenter parts select it almost
+everywhere, because buying HBM traffic with $2.25\times$ to $4.00\times$ halo
+recomputation is affordable only where float64 is not rate limited. Against
+the XLA compiled loop the two effects compound: at $128$ the hand-written
+single step is already $2.01\times$ and fusion adds $1.619\times$ on top, so
+$3.25\times$ in total on the 4090 alone.
+
+\subsection{Choosing CPU or GPU}
+\label{sec:exp:device}
+The router defers to CPU specialists for sparse lasso and many small LPs, but can choose an evolved GPU iteration on large structured problems. Precision and kernel fusion change device rankings: on the tested lasso cross-validation workload float32 does not reach $10^{-6}$, and the best temporally fused CUDA tile differs at five of six sizes between an RTX~4090 and an H100. The best tile runs $1.15\times$--$2.74\times$ faster than an XLA loop across those device/size tests, though selecting CPU versus GPU improves repeat-visit time by only $2\%$ and raises first-visit time $1.70\times$ on the held-out field. Device and precision measurements are in Appendix~\ref{app:experiments}.
