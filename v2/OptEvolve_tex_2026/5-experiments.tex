@@ -1,11 +1,26 @@
 \section{Experiments}
 \label{sec:experiments}
 
-We test whether checked search improves a base scheme, whether evolved formulations and operators beat available engines, and whether routing generalizes to held-out instances. Results on the generated families, including the routes the system chose and the three it misjudged, are in Appendix~\ref{app:generated}. Detailed settings, per-device sweeps, and further losses are in Appendix~\ref{app:experiments} and the companion experiment log.
+Each part answers one of the obstacles of Section~\ref{sec:introduction}.
+Section~\ref{sec:exp:protocol} and the six classes of
+Section~\ref{sec:exp:regimes} address (i), whether a comparison can be trusted,
+by grading every entrant with the same check and completing the field with the
+structure-specific specialist. Section~\ref{sec:exp:evolve} addresses (ii), by
+separating what the gate admits from what finite tests screen.
+Sections~\ref{sec:exp:regimes} through~\ref{sec:exp:device} address (iii), by
+varying formulation, algorithm and device together rather than one at a time. Results on the generated families, including the routes the system chose and the three it misjudged, are in Appendix~\ref{app:generated}. Detailed settings, per-device sweeps, and further losses are in Appendix~\ref{app:experiments} and the companion experiment log.
 
 \subsection{Evaluation protocol}
 \label{sec:exp:protocol}
-Every route and competitor must satisfy the same check on the \emph{original} problem: relative constraint violation and objective gap, normalized by $1+|f^\star|$, are each at most the target tolerance; $f^\star$ is a high-accuracy reference computed outside timing. Where $f^\star$ is numerical rather than a proven bound, this is an independent empirical acceptance check, not a formal optimality certificate. The comparison field includes generic LP/QP/conic engines and recognized specialists such as coordinate descent for lasso, LIBLINEAR/LIBSVM for SVM, and network simplex for transport. Each engine runs at its shipped default settings, so the comparison concerns out-of-the-box performance at the requested accuracy. Head-to-head timings include detection, formulation, compilation, and solve in a fresh process with compilation cache disabled, except CUDA context creation; the comparison engines likewise use fresh processes. Held-out routing has a 20\,s budget, with exploration charged on first visits. Machines and warm-versus-cold conventions are specified in Appendix~\ref{app:experiments}.
+Every route and competitor must satisfy the same check on the \emph{original} problem: relative constraint violation and objective gap, normalized by $1+|f^\star|$, are each at most the target tolerance; $f^\star$ is a high-accuracy reference computed outside timing. Where $f^\star$ is numerical rather than a proven bound, this is an independent empirical acceptance check, not a formal optimality certificate. The comparison field includes generic LP/QP/conic engines and recognized specialists such as coordinate descent for lasso, LIBLINEAR/LIBSVM for SVM, and network simplex for transport. Each engine runs at its shipped default settings, so the comparison concerns out-of-the-box performance at the requested accuracy. Head-to-head timings include detection, formulation, compilation, and solve in a fresh process with compilation cache disabled, except CUDA context creation; the comparison engines likewise use fresh processes. We report two quantities against this check. \emph{Accepted time} is the wall
+clock to the first point that passes it, with a failure charged the full budget.
+\emph{Reachability} is the finest tolerance a solver passes it at, over every
+setting that solver was offered, or none if there is no such tolerance. The two
+are independent: a solver can be fastest to a loose target and have no
+reachability at a tight one, which is what happens in three of the six classes
+of Section~\ref{sec:exp:regimes}. Reporting time alone hides that, which is why
+both appear in every table.
+Held-out routing has a 20\,s budget, with exploration charged on first visits. Machines and warm-versus-cold conventions are specified in Appendix~\ref{app:experiments}.
 
 \subsection{What checked evolution changes}
 \label{sec:exp:evolve}
