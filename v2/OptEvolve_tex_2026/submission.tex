@@ -114,25 +114,26 @@
 
 
 \begin{abstract}
-Canonical optimization algorithms each excel in distinct regimes, yet
-identifying the optimal combination of formulation, algorithm, and hardware
-strategy for a target instance remains non-obvious. While recent algorithmic
-discovery frameworks utilize LLM-guided evolutionary search, naive source-code
-mutation fails to provide structural guarantees of mathematical convergence. We
-introduce \textbf{OptEvolve}, an automated framework for optimization modeling
-and verified solver synthesis. OptEvolve synthesizes and selects high-performing solvers for a target problem
-family by co-optimizing mathematical formulations, algorithmic schemes, and
-hardware-level operator implementations. Convergence is a design
-constraint in OptEvolve's monotone-operator calculus: a symbolic gate checks
-sufficient conditions for typed base-scheme and relaxation genomes before
-evaluation; synthesized projections pass separate contract tests. An empirical
-cost model guides the search
-across hyperparameters and stopping criteria, while optimizing GPU iteration
-fusion tiles on target devices. OptEvolve matches or beats domain-specialist
-solvers on structured problems and outperforms general-purpose baselines where
-no specialist exists. Furthermore, its targeted CUDA fusion tiles outperform XLA
-by up to $2.7\times$, and the framework generalizes effectively across unseen,
-held-out QP, LP, and SOCP benchmarks.
+Choosing a convex solver couples mathematical validity with hardware cost:
+changing a formulation changes both the iteration and which implementation is
+fastest. We introduce \textbf{OptEvolve}, in which an LLM proposes typed
+splitting schemes, solution-preserving formulations, projection implementations, and
+hardware backends for a problem family. Before a proposed scheme is timed, a
+symbolic gate checks sufficient convergence conditions for its \emph{exact}
+iteration. Generated projections and kernels pass separate finite numerical
+tests, and every returned point faces an independent accuracy check on the
+original problem. Search and routing use measured time to an accepted answer
+on the target device. On budget-constrained least squares at $n=48{,}000$,
+where no packaged specialist exists, a searched formulation and projection
+give a $25.22\times$ faster cold solve at tolerance $10^{-4}$ than the fastest
+accepted engine at shipped defaults. A separate $n=12{,}000$ ablation shows
+that formulation accounts for most of this family's gain. Across $28$
+held-out QP, LP, and SOCP instances, routing solves $27$
+within budget versus $26$ for a best-per-instance oracle restricted to
+existing competitor engines, although first-visit exploration is costly. In a
+six-size OCT kernel sweep, device-specific CUDA fusion improves iteration-loop
+time by up to $2.74\times$ over XLA, with the best tile differing at five sizes
+between an RTX~4090 and H100; this is a kernel-loop, not a full-solve, gain.
 \end{abstract}
 
 
@@ -147,8 +148,9 @@ held-out QP, LP, and SOCP benchmarks.
 \input{6-conclusion}
 
 \section*{Reproducibility Statement}
-We will release a pip-installable implementation, reproduction scripts, solver
-genomes and certificates, configurations, seeds, and data manifests.
+The anonymized code, reproduction scripts, solver genomes and certificates,
+configurations, seeds, and data manifests are available at
+\url{https://anonymous.4open.science/r/OptEvolve-8104/README.md}.
 Public data sources and evaluation conventions are documented in the companion
 experiment log (Sections~\ref{LOG-app:log:data} and~\ref{LOG-app:log:conventions}).
 Archived genomes allow rerunning the reported solvers without regenerating

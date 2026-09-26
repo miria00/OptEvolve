@@ -340,3 +340,37 @@ model is biased low on both devices, predicting $0.75\times$ of measured time on
 the GPU and $0.63\times$ on the CPU, but the bias is common enough that it still
 orders the two devices correctly on 15 of 15 instances, which is what the
 decision requires.
+
+
+\subsection{Generated families: wins, losses, and routing}
+\label{app:generated}
+\label{sec:exp:specialists}
+\label{sec:exp:general}
+Table~\ref{tab:headline} gives cold first-solve comparisons with the fastest accepted engine at shipped defaults in the completed field. Budget-constrained least squares has no packaged specialist; OptEvolve builds a relocated formulation and synthesized projection that beat the available generic engines. The same router misjudges some families: PIQP and celer win on the budget band and group lasso. A large-scale comparison against Clarabel also favors evolved formulations on SVM dual and portfolio instances, but only where Clarabel is the strongest available engine; the qualified comparisons and intervals are in Appendix~\ref{app:experiments}.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{llrr}
+\toprule
+held-out instance & fastest accepted engine & ours, cold (s) & speedup \\
+\midrule
+budget LS, $n=12{,}000$ & Clarabel & 1.04 & $4.49\times$ \\
+budget LS, $n=48{,}000$ & Clarabel & 8.10 & $25.22\times$ \\
+robust LP, $n=5{,}000$ & Clarabel & 1.77 & $8.86\times$ \\
+budget band, $n=80{,}000$ & PIQP & 1.33 & $0.24\times$ \\
+group lasso, $n=10{,}000$ & celer & 1.02 & $0.56\times$ \\
+\bottomrule
+\end{tabular}
+\caption{Chosen routes versus the fastest accepted shipped-default engine at $10^{-4}$, RTX~4090 host; cold first solve with no persistent compile cache, five paired repetitions. Speedups are paired geometric means; other tolerances, intervals, and the SVM route at parity are in Table~\ref{tab:specialists}, Appendix~\ref{app:experiments}. CUDA context creation (about $0.22$\,s) is excluded.}
+\label{tab:headline}
+\end{table}
+
+\paragraph{Where the speedup comes from.}
+On budget-constrained least squares at $n=12{,}000$ and tolerance $10^{-4}$,
+constraint relocation with a hand-written Newton projection is already
+$3.7\times$ faster than the best available engine. Holding the formulation
+fixed, the synthesized projection makes the cold first solve a further
+$1.16\times$--$1.29\times$ faster than the hand-written version across
+tolerances $10^{-3}$--$10^{-6}$. The formulation accounts for most of this
+family's gain; faster projection calls also improve end-to-end time, but
+per-call speedups are not solver speedups (Appendix~\ref{app:experiments}).

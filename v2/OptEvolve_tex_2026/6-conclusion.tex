@@ -1,5 +1,21 @@
 \section{Conclusion}
 
-OptEvolve addresses solver-family choice and LLM-proposal verification together. It builds reusable candidates from structured convex problems, checks convergence conditions \emph{before} timing certified scheme genomes, measures formulation and implementation costs on target hardware, and routes each instance to an evolved or existing engine. Exact-iteration certificates and numerical acceptance checks serve different purposes.
+OptEvolve searches reusable convex-solver designs and routes instances by
+measured time to an independently accepted answer on target hardware. Its
+pre-execution gate checks sufficient convergence conditions for exact splitting
+iterations; finite tests screen generated numerical code; and an
+original-problem check accepts returned points. These checks have different
+scopes.
 
-On a budget-constrained family without a packaged specialist, a cold evolved solve is $20.6\times$--$35.0\times$ faster than the best available engine at $n=48{,}000$; across the held-out field, routing solves $27/28$ instances within budget. Specialists still win in other regimes, and exploration can dominate a first visit. The contribution is a division of labor: mathematical checks govern admissible iterations, measured costs guide solver choice, and the original-problem check governs returned answers.
+On budget-constrained least squares at $n=48{,}000$, where no packaged
+specialist exists, formulation relocation and a synthesized projection produce
+a $25.22\times$ faster cold solve at $10^{-4}$ than the fastest accepted engine
+at shipped defaults. An ablation at $n=12{,}000$ shows that formulation
+accounts for most of this family's gain. Across the
+held-out field, routing solves $27/28$ instances within budget versus $26/28$
+for a best-per-instance oracle limited to existing competitor engines. In
+three of six application classes, a baseline returns a point that fails the common
+accuracy check; GPU tile choices also differ by device. These results support
+joint mathematical and hardware-aware solver search for reusable workloads,
+while specialists win in other regimes and first-visit exploration remains
+costly.
